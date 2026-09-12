@@ -3,7 +3,10 @@
 use App\Enums\ContentStatus;
 use App\Enums\Platform;
 use App\Models\Content;
+use App\Services\Buffer\BufferException;
 use App\Services\Content\ContentApprovalService;
+use App\Services\Content\ContentPublishService;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
@@ -15,6 +18,10 @@ new #[Layout('components.admin-layout', ['title' => 'Detail Konten', 'subtitle' 
     public bool $revising = false;
 
     public string $note = '';
+
+    public bool $scheduling = false;
+
+    public string $scheduleAt = '';
 
     public function mount(Content $content): void
     {
@@ -63,6 +70,62 @@ new #[Layout('components.admin-layout', ['title' => 'Detail Konten', 'subtitle' 
         session()->flash('status', 'Konten ditarik kembali ke draft.');
     }
 
+    public function startScheduling(): void
+    {
+        Gate::authorize('schedule.manage');
+        $this->scheduling = true;
+        $this->scheduleAt = now()->addDay()->setTime(9, 0)->format('Y-m-d\TH:i');
+        $this->resetValidation();
+    }
+
+    public function cancelScheduling(): void
+    {
+        $this->reset('scheduling', 'scheduleAt');
+    }
+
+    public function schedule(): void
+    {
+        Gate::authorize('schedule.manage');
+        $this->validate([
+            'scheduleAt' => ['required', 'date', 'after_or_equal:now'],
+        ], attributes: ['scheduleAt' => 'tanggal & waktu jadwal']);
+
+        app(ContentPublishService::class)->schedule($this->content, auth()->user(), Carbon::parse($this->scheduleAt));
+        $this->reset('scheduling', 'scheduleAt');
+        $this->content->refresh()->load('logs.user');
+        session()->flash('status', 'Konten dijadwalkan untuk '.$this->content->scheduled_at->format('d M Y H:i').'.');
+    }
+
+    public function cancelSchedule(): void
+    {
+        Gate::authorize('schedule.manage');
+        app(ContentPublishService::class)->cancelSchedule($this->content, auth()->user());
+        $this->content->refresh()->load('logs.user');
+        session()->flash('status', 'Jadwal dibatalkan — konten kembali ke status Disetujui.');
+    }
+
+    public function publishNow(): void
+    {
+        Gate::authorize('publish.manage');
+
+        try {
+            app(ContentPublishService::class)->publishViaBuffer($this->content, auth()->user());
+            session()->flash('status', 'Konten dipublikasikan via Buffer.');
+        } catch (BufferException $e) {
+            session()->flash('error', 'Gagal publikasi via Buffer: '.$e->getMessage());
+        }
+
+        $this->content->refresh()->load('logs.user');
+    }
+
+    public function markPublishedManually(): void
+    {
+        Gate::authorize('publish.manage');
+        app(ContentPublishService::class)->markPublishedManually($this->content, auth()->user());
+        $this->content->refresh()->load('logs.user');
+        session()->flash('status', 'Konten ditandai sudah dipublikasikan (manual, di luar Buffer).');
+    }
+
     public function delete(): void
     {
         Gate::authorize('content.delete');
@@ -98,7 +161,9 @@ new #[Layout('components.admin-layout', ['title' => 'Detail Konten', 'subtitle' 
                         <button type="button" class="btn btn-sm btn-danger"><i class="fa-solid fa-trash"></i> Hapus</button>
                     </x-confirm-button>
                 @endcan
-            @elseif ($content->status === \App\Enums\ContentStatus::PendingApproval)
+            @endif
+
+            @if ($content->status === \App\Enums\ContentStatus::PendingApproval)
                 @can('approval.approve')
                     <x-confirm-button
                         message="Setujui konten ini?"
@@ -123,8 +188,109 @@ new #[Layout('components.admin-layout', ['title' => 'Detail Konten', 'subtitle' 
                     <button class="btn btn-sm btn-ghost" wire:click="withdraw"><i class="fa-solid fa-rotate-left"></i> Tarik ke Draft</button>
                 @endcan
             @endif
+
+            @if ($content->status === \App\Enums\ContentStatus::Approved)
+                @can('schedule.manage')
+                    <button class="btn btn-sm btn-primary" wire:click="startScheduling"><i class="fa-solid fa-calendar-plus"></i> Jadwalkan</button>
+                @endcan
+                @can('publish.manage')
+                    <x-confirm-button
+                        message="Publikasikan konten ini sekarang juga via Buffer?"
+                        action="$wire.publishNow()"
+                        title="Publikasikan via Buffer"
+                        confirmLabel="Ya, Publikasikan"
+                        confirmClass="btn-primary"
+                        icon="fa-solid fa-paper-plane"
+                        iconColor="var(--status-posted-text)"
+                    >
+                        <button type="button" class="btn btn-sm"><i class="fa-solid fa-paper-plane"></i> Publikasikan Sekarang</button>
+                    </x-confirm-button>
+                    <x-confirm-button
+                        message="Tandai konten ini sudah dipublikasikan secara manual (di luar Buffer)? Gunakan ini kalau Anda sudah memposting sendiri."
+                        action="$wire.markPublishedManually()"
+                        title="Tandai Dipublikasikan Manual"
+                        confirmLabel="Ya, Tandai"
+                        confirmClass="btn-primary"
+                        icon="fa-solid fa-check-double"
+                        iconColor="var(--text-secondary)"
+                    >
+                        <button type="button" class="btn btn-sm btn-ghost"><i class="fa-solid fa-check-double"></i> Tandai Manual</button>
+                    </x-confirm-button>
+                @endcan
+            @endif
+
+            @if ($content->status === \App\Enums\ContentStatus::Scheduled)
+                @can('publish.manage')
+                    <x-confirm-button
+                        message="Publikasikan konten ini sekarang juga via Buffer (mendahului jadwal)?"
+                        action="$wire.publishNow()"
+                        title="Publikasikan via Buffer"
+                        confirmLabel="Ya, Publikasikan"
+                        confirmClass="btn-primary"
+                        icon="fa-solid fa-paper-plane"
+                        iconColor="var(--status-posted-text)"
+                    >
+                        <button type="button" class="btn btn-sm btn-primary"><i class="fa-solid fa-paper-plane"></i> Publikasikan Sekarang</button>
+                    </x-confirm-button>
+                    <x-confirm-button
+                        message="Tandai konten ini sudah dipublikasikan secara manual (di luar Buffer)?"
+                        action="$wire.markPublishedManually()"
+                        title="Tandai Dipublikasikan Manual"
+                        confirmLabel="Ya, Tandai"
+                        confirmClass="btn-primary"
+                        icon="fa-solid fa-check-double"
+                        iconColor="var(--text-secondary)"
+                    >
+                        <button type="button" class="btn btn-sm btn-ghost"><i class="fa-solid fa-check-double"></i> Tandai Manual</button>
+                    </x-confirm-button>
+                @endcan
+                @can('schedule.manage')
+                    <x-confirm-button message="Batalkan jadwal ini? Konten kembali ke status Disetujui." action="$wire.cancelSchedule()" confirmLabel="Ya, Batalkan">
+                        <button type="button" class="btn btn-sm"><i class="fa-solid fa-calendar-xmark"></i> Batalkan Jadwal</button>
+                    </x-confirm-button>
+                @endcan
+            @endif
+
+            @if ($content->status === \App\Enums\ContentStatus::Failed)
+                @can('publish.manage')
+                    <x-confirm-button
+                        message="Coba publikasikan ulang konten ini via Buffer?"
+                        action="$wire.publishNow()"
+                        title="Coba Lagi"
+                        confirmLabel="Ya, Coba Lagi"
+                        confirmClass="btn-primary"
+                        icon="fa-solid fa-rotate-right"
+                        iconColor="var(--status-posted-text)"
+                    >
+                        <button type="button" class="btn btn-sm btn-primary"><i class="fa-solid fa-rotate-right"></i> Coba Lagi</button>
+                    </x-confirm-button>
+                    <x-confirm-button
+                        message="Tandai konten ini sudah dipublikasikan secara manual (di luar Buffer)?"
+                        action="$wire.markPublishedManually()"
+                        title="Tandai Dipublikasikan Manual"
+                        confirmLabel="Ya, Tandai"
+                        confirmClass="btn-primary"
+                        icon="fa-solid fa-check-double"
+                        iconColor="var(--text-secondary)"
+                    >
+                        <button type="button" class="btn btn-sm btn-ghost"><i class="fa-solid fa-check-double"></i> Tandai Manual</button>
+                    </x-confirm-button>
+                @endcan
+            @endif
         </div>
     </div>
+
+    @if ($scheduling)
+        <div class="panel">
+            <label class="field-label">Jadwalkan Publikasi</label>
+            <input type="datetime-local" class="input" wire:model="scheduleAt" style="max-width:260px;">
+            @error('scheduleAt')<div class="field-error">{{ $message }}</div>@enderror
+            <div style="display:flex;gap:8px;margin-top:8px;">
+                <button class="btn btn-sm btn-primary" wire:click="schedule"><i class="fa-solid fa-calendar-check"></i> Simpan Jadwal</button>
+                <button class="btn btn-sm btn-ghost" wire:click="cancelScheduling"><i class="fa-solid fa-xmark"></i> Batal</button>
+            </div>
+        </div>
+    @endif
 
     @if ($revising)
         <div class="panel">

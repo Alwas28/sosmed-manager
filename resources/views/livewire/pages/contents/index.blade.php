@@ -182,6 +182,14 @@ new #[Layout('components.admin-layout', ['title' => 'Konten', 'subtitle' => 'Kel
                                 @can('content.submit')
                                     <button class="btn btn-sm" wire:click="withdraw({{ $content->id }})"><i class="fa-solid fa-rotate-left"></i> Tarik ke Draft</button>
                                 @endcan
+                            @elseif ($content->status === \App\Enums\ContentStatus::Approved)
+                                @can('schedule.manage')
+                                    <a class="btn btn-sm btn-primary" href="{{ route('konten.show', $content) }}" wire:navigate><i class="fa-solid fa-calendar-plus"></i> Jadwalkan</a>
+                                @endcan
+                            @elseif ($content->status === \App\Enums\ContentStatus::Scheduled)
+                                @can('publish.manage')
+                                    <a class="btn btn-sm btn-primary" href="{{ route('konten.show', $content) }}" wire:navigate><i class="fa-solid fa-paper-plane"></i> Publikasikan</a>
+                                @endcan
                             @endif
                         </td>
                     </tr>
