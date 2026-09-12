@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ContentOS — My Content</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>
+  :root{
+    --accent:#6366F1;
+
+    --page:#0A0D14;
+    --sidebar:#0D1119;
+    --surface:#10141D;
+    --surface-alt:#141926;
+    --row-hover:#161C29;
+    --border:#1E2433;
+    --text-primary:#E8EAEF;
+    --text-secondary:#8D95AB;
+    --text-muted:#565F75;
+
+    --status-posted-bg:rgba(52,211,153,0.14);
+    --status-posted-text:#34D399;
+    --status-scheduled-bg:rgba(96,165,250,0.16);
+    --status-scheduled-text:#60A5FA;
+    --status-ready-bg:rgba(45,212,191,0.16);
+    --status-ready-text:#2DD4BF;
+    --status-review-bg:rgba(196,132,252,0.16);
+    --status-review-text:#C084FC;
+    --drive-bg:rgba(66,133,244,0.16);
+    --drive-text:#7CA9FA;
+  }
+  body.light{
+    --page:#F5F6F9;
+    --sidebar:#FFFFFF;
+    --surface:#FFFFFF;
+    --surface-alt:#F8F9FB;
+    --row-hover:#F2F4F8;
+    --border:#E7E9F0;
+    --text-primary:#161923;
+    --text-secondary:#5C6478;
+    --text-muted:#9CA3B5;
+
+    --status-posted-bg:#DCFCE7;
+    --status-posted-text:#157347;
+    --status-scheduled-bg:#DBEAFE;
+    --status-scheduled-text:#1D4ED8;
+    --status-ready-bg:#CCFBF1;
+    --status-ready-text:#0F766E;
+    --status-review-bg:#F3E8FF;
+    --status-review-text:#7E22CE;
+    --drive-bg:rgba(66,133,244,0.1);
+    --drive-text:#1D5FE0;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--page);
+    color:var(--text-primary);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,sans-serif;
+    display:flex;
+    height:100vh;
+    overflow:hidden;
+    transition:background .15s ease,color .15s ease;
+  }
+  button{font-family:inherit;cursor:pointer;}
+
+  /* ---------------- sidebar ---------------- */
+  .overlay{
+    display:none;
+    position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:30;
+  }
+  .overlay.show{display:block;}
+
+  .sidebar{
+    position:fixed;top:0;left:0;height:100vh;width:260px;
+    background:var(--sidebar);border-right:1px solid var(--border);
+    display:flex;flex-direction:column;z-index:40;
+    transform:translateX(-100%);
+    transition:transform .2s ease, background .15s ease, border-color .15s ease;
+    overflow:hidden;
+  }
+  .sidebar.open{transform:translateX(0);}
+
+  .brand{display:flex;align-items:center;justify-content:space-between;padding:20px 20px 14px;}
+  .brand-left{display:flex;align-items:center;gap:10px;min-width:0;}
+  .brand-icon{width:32px;height:32px;border-radius:8px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;font-size:14px;flex-shrink:0;}
+  .brand-name{font-size:14px;font-weight:600;line-height:1.2;}
+  .brand-sub{font-size:11px;color:var(--text-muted);line-height:1.2;}
+  .close-btn{display:none;background:none;border:none;color:var(--text-muted);font-size:18px;}
+
+  .customize{padding:0 20px 12px;}
+  .customize-label{font-size:10.5px;color:var(--text-muted);font-weight:500;letter-spacing:.02em;margin-bottom:8px;}
+  .organize-btn{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text-secondary);background:none;border:1px solid var(--border);border-radius:6px;padding:6px 10px;width:100%;}
+  .organize-btn:hover{opacity:.8;}
+
+  nav.menu{flex:1;min-height:0;overflow-y:auto;padding:0 12px 12px;}
+  nav.menu,
+  .content{
+    scrollbar-width:thin;
+    scrollbar-color:var(--border) transparent;
+  }
+  nav.menu::-webkit-scrollbar,
+  .content::-webkit-scrollbar{
+    width:6px;
+  }
+  nav.menu::-webkit-scrollbar-track,
+  .content::-webkit-scrollbar-track{
+    background:transparent;
+  }
+  nav.menu::-webkit-scrollbar-thumb,
+  .content::-webkit-scrollbar-thumb{
+    background-color:var(--border);
+    border-radius:999px;
+  }
+  nav.menu::-webkit-scrollbar-thumb:hover,
+  .content::-webkit-scrollbar-thumb:hover{
+    background-color:var(--text-muted);
+  }
+  .nav-section{margin-bottom:16px;}
+  .nav-section-label{padding:0 8px;font-size:10.5px;color:var(--text-muted);font-weight:500;letter-spacing:.02em;margin-bottom:6px;}
+  .nav-item{
+    display:flex;align-items:center;gap:10px;width:100%;
+    background:none;border:none;color:var(--text-secondary);
+    font-size:13px;font-weight:500;border-radius:6px;padding:7px 10px;
+    text-align:left;
+  }
+  .nav-item i.icon{width:15px;text-align:center;font-size:13px;flex-shrink:0;}
+  .nav-item span.label{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .nav-item:hover{background:var(--surface-alt);}
+  .nav-item.active{background:color-mix(in srgb, var(--accent) 15%, transparent);color:var(--accent);}
+  .nav-item .chevron{font-size:11px;flex-shrink:0;}
+
+  .sidebar-footer{position:relative;border-top:1px solid var(--border);flex-shrink:0;}
+  .profile-btn{
+    width:100%;background:none;border:none;padding:14px 16px;
+    display:flex;align-items:center;gap:10px;text-align:left;
+  }
+  .profile-btn:hover{background:var(--surface-alt);}
+  .avatar{width:32px;height:32px;border-radius:999px;background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;flex-shrink:0;}
+  .footer-text{flex:1;min-width:0;}
+  .footer-name{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .footer-role{font-size:11px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .profile-chevron{color:var(--text-muted);font-size:12px;flex-shrink:0;transition:transform .15s ease;}
+  .profile-btn.open .profile-chevron{transform:rotate(180deg);}
+
+  .profile-menu{
+    display:none;position:absolute;bottom:calc(100% + 6px);left:12px;right:12px;
+    background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    box-shadow:0 12px 32px rgba(0,0,0,.25);overflow:hidden;z-index:50;
+  }
+  .profile-menu.show{display:block;}
+  .profile-menu button{
+    width:100%;display:flex;align-items:center;gap:9px;background:none;border:none;
+    color:var(--text-secondary);font-size:13px;font-weight:500;padding:10px 14px;text-align:left;
+  }
+  .profile-menu button:hover{background:var(--surface-alt);}
+  .profile-menu button.logout{color:#F43F5E;}
+  .profile-menu button i{width:14px;text-align:center;font-size:12.5px;}
+
+  /* ---------------- main ---------------- */
+  .main{flex:1;min-width:0;height:100vh;display:flex;flex-direction:column;overflow:hidden;}
+
+  header.topbar{
+    flex-shrink:0;
+    border-bottom:1px solid var(--border);
+    padding:16px 24px;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+  }
+  .topbar-left{display:flex;align-items:flex-start;gap:12px;min-width:0;}
+  .menu-btn{display:none;background:none;border:none;color:var(--text-secondary);font-size:20px;margin-top:2px;}
+  .page-title{font-size:22px;font-weight:600;margin:0;}
+  .page-sub{font-size:13px;color:var(--text-secondary);margin:2px 0 0;}
+
+  .topbar-right{display:flex;align-items:center;gap:8px;flex-shrink:0;position:relative;}
+
+  .toggle{
+    position:relative;width:52px;height:28px;border-radius:999px;
+    background:var(--surface-alt);border:1px solid var(--border);
+    display:flex;align-items:center;padding:3px;
+  }
+  .toggle-knob{
+    width:20px;height:20px;border-radius:999px;background:var(--accent);
+    display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;
+    transition:transform .2s ease;transform:translateX(0);
+  }
+  body.light .toggle-knob{transform:translateX(24px);}
+
+  .palette-btn{
+    width:36px;height:36px;border-radius:999px;background:var(--surface-alt);
+    border:1px solid var(--border);color:var(--text-secondary);
+    display:flex;align-items:center;justify-content:center;font-size:15px;
+  }
+
+  .theme-panel{
+    display:none;position:absolute;top:44px;right:0;width:210px;
+    background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    padding:14px;box-shadow:0 12px 32px rgba(0,0,0,.25);z-index:50;
+  }
+  .theme-panel.show{display:block;}
+  .theme-panel-title{font-size:12px;font-weight:500;margin-bottom:10px;}
+  .swatches{display:flex;flex-wrap:wrap;gap:10px;}
+  .swatch{
+    width:28px;height:28px;border-radius:999px;border:none;
+    display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;
+    box-shadow:0 0 0 2px transparent;
+  }
+  .swatch.active{box-shadow:0 0 0 2px var(--surface),0 0 0 4px currentColor;}
+  .theme-panel-note{border-top:1px solid var(--border);margin-top:12px;padding-top:10px;font-size:11.5px;color:var(--text-muted);}
+
+  /* filters */
+  .filters{flex-shrink:0;padding:16px 24px 4px;display:flex;gap:8px;overflow-x:auto;}
+  .filter-btn{
+    white-space:nowrap;font-size:12.5px;font-weight:500;border-radius:999px;
+    padding:6px 14px;border:1px solid var(--border);background:var(--surface);color:var(--text-secondary);
+  }
+  .filter-btn.active{background:var(--accent);border-color:var(--accent);color:#fff;}
+
+  /* content */
+  .content{flex:1;min-height:0;padding:16px 24px 24px;overflow-y:auto;}
+
+  .table-wrap{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface);}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  thead tr{border-bottom:1px solid var(--border);text-align:left;}
+  thead th{font-weight:500;color:var(--text-muted);padding:12px 16px;}
+  tbody tr{border-bottom:1px solid var(--border);}
+  tbody tr:last-child{border-bottom:none;}
+  tbody tr:hover{background:var(--row-hover);}
+  tbody td{padding:12px 16px;vertical-align:top;}
+
+  .title-cell{max-width:280px;}
+  .title-text{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .tags{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;}
+  .tag{font-size:10.5px;background:var(--surface-alt);color:var(--text-secondary);padding:2px 8px;border-radius:999px;}
+
+  .pill{font-size:11.5px;font-weight:500;padding:3px 10px;border-radius:999px;display:inline-block;white-space:nowrap;}
+  .pill-normal{background:var(--surface-alt);color:var(--text-secondary);}
+  .pill-drive{display:inline-flex;align-items:center;gap:5px;background:var(--drive-bg);color:var(--drive-text);}
+
+  .date-cell{color:var(--text-secondary);white-space:nowrap;}
+
+  .review-btn{font-size:12px;font-weight:500;border:1px solid var(--border);color:var(--text-primary);background:none;border-radius:6px;padding:6px 12px;white-space:nowrap;}
+  .review-btn:hover{opacity:.8;}
+  .action-cell{text-align:right;}
+
+  /* mobile cards */
+  .cards{display:none;flex-direction:column;gap:12px;}
+  .card{border:1px solid var(--border);background:var(--surface);border-radius:12px;padding:16px;}
+  .card-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start;}
+  .card-title{font-weight:500;font-size:14px;line-height:1.4;}
+  .card-footer{border-top:1px solid var(--border);margin-top:12px;padding-top:12px;display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--text-secondary);}
+  .card .review-btn{width:100%;margin-top:12px;padding:8px;text-align:center;}
+
+  .empty{text-align:center;padding:60px 0;color:var(--text-muted);font-size:13px;}
+
+  @media (min-width:900px){
+    .sidebar{transform:none;}
+    .main{margin-left:260px;}
+    .overlay{display:none !important;}
+  }
+  @media (max-width:899px){
+    .menu-btn{display:block;}
+    .close-btn{display:block;}
+  }
+  @media (max-width:767px){
+    .table-wrap{display:none;}
+    .cards{display:flex;}
+  }
+</style>
+</head>
+<body class="light">
+
+<div class="overlay" id="overlay"></div>
+
+<aside class="sidebar" id="sidebar">
+  <div class="brand">
+    <div class="brand-left">
+      <div class="brand-icon"><i class="fa-solid fa-bolt"></i></div>
+      <div>
+        <div class="brand-name">ContentOS</div>
+        <div class="brand-sub">Management Suite</div>
+      </div>
+    </div>
+    <button class="close-btn" id="closeSidebar"><i class="fa-solid fa-xmark"></i></button>
+  </div>
+
+  <div class="customize">
+    <div class="customize-label">Customize navigation</div>
+    <button class="organize-btn"><i class="fa-solid fa-pen"></i> Organize</button>
+  </div>
+
+  <nav class="menu">
+    <div class="nav-section">
+      <div class="nav-section-label">Overview</div>
+      <button class="nav-item"><i class="icon fa-solid fa-table-columns"></i><span class="label">Dashboard</span></button>
+      <button class="nav-item"><i class="icon fa-solid fa-users"></i><span class="label">Brand Collabs</span></button>
+      <button class="nav-item"><i class="icon fa-solid fa-layer-group"></i><span class="label">Editor Dashboard</span></button>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-label">My Content</div>
+      <button class="nav-item"><i class="icon fa-solid fa-file-lines"></i><span class="label">All Content</span></button>
+      <button class="nav-item"><i class="icon fa-solid fa-arrows-rotate"></i><span class="label">Repurpose</span></button>
+      <button class="nav-item"><i class="icon fa-brands fa-youtube"></i><span class="label">YouTube Scripts</span></button>
+      <button class="nav-item active"><i class="icon fa-solid fa-film"></i><span class="label">Reels Scripts</span><i class="chevron fa-solid fa-chevron-right"></i></button>
+      <button class="nav-item"><i class="icon fa-brands fa-x-twitter"></i><span class="label">X Posts</span></button>
+      <button class="nav-item"><i class="icon fa-solid fa-book-open"></i><span class="label">Blog Posts</span></button>
+      <button class="nav-item"><i class="icon fa-solid fa-calendar-days"></i><span class="label">Content Calendar</span></button>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-label">Workspace</div>
+      <button class="nav-item"><i class="icon fa-solid fa-code-branch"></i><span class="label">ScriptFlow</span></button>
+      <button class="nav-item"><i class="icon fa-solid fa-diagram-project"></i><span class="label">SOP Workflow</span></button>
+      <button class="nav-item"><i class="icon fa-solid fa-folder-open"></i><span class="label">Content References</span></button>
+      <button class="nav-item"><i class="icon fa-solid fa-wand-magic-sparkles"></i><span class="label">Skills</span></button>
+      <button class="nav-item"><i class="icon fa-solid fa-brain"></i><span class="label">Memory Log</span></button>
+    </div>
+
+    <div class="nav-section">
+      <div class="nav-section-label">Tools</div>
+      <button class="nav-item"><i class="icon fa-solid fa-magnifying-glass"></i><span class="label">Competitor Tracker</span></button>
+      <button class="nav-item"><i class="icon fa-solid fa-newspaper"></i><span class="label">News Terminal</span></button>
+      <button class="nav-item"><i class="icon fa-solid fa-list-check"></i><span class="label">Work Tracker</span></button>
+    </div>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="profile-menu" id="profileMenu">
+      <button id="profileLink"><i class="fa-solid fa-user"></i> Profile</button>
+      <button class="logout" id="logoutLink"><i class="fa-solid fa-arrow-right-from-bracket"></i> Logout</button>
+    </div>
+    <button class="profile-btn" id="profileBtn">
+      <div class="avatar">GA</div>
+      <div class="footer-text">
+        <div class="footer-name">Garry Audie</div>
+        <div class="footer-role">admin session</div>
+      </div>
+      <i class="fa-solid fa-chevron-up profile-chevron"></i>
+    </button>
+  </div>
+</aside>
+
+<div class="main">
+  <header class="topbar">
+    <div class="topbar-left">
+      <button class="menu-btn" id="openSidebar"><i class="fa-solid fa-bars"></i></button>
+      <div>
+        <h1 class="page-title">My Content</h1>
+        <p class="page-sub">Manage and track all your content pieces.</p>
+      </div>
+    </div>
+
+    <div class="topbar-right">
+      <button class="toggle" id="themeToggle" aria-label="Toggle theme">
+        <div class="toggle-knob" id="toggleKnob"><i class="fa-solid fa-sun" id="toggleIcon"></i></div>
+      </button>
+      <button class="palette-btn" id="paletteBtn"><i class="fa-solid fa-palette"></i></button>
+
+      <div class="theme-panel" id="themePanel">
+        <div class="theme-panel-title">Theme color</div>
+        <div class="swatches" id="swatches"></div>
+        <div class="theme-panel-note">Applies to accents, active states and highlights.</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="filters" id="filters"></div>
+
+  <div class="content">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Content</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Date</th>
+            <th>Source</th>
+            <th style="text-align:right;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody"></tbody>
+      </table>
+    </div>
+    <div class="cards" id="cardList"></div>
+    <div class="empty" id="emptyState" style="display:none;">No content matches this filter.</div>
+  </div>
+</div>
+
+<script>
+  const ACCENTS = {
+    indigo:  { name: "Indigo",  hex: "#6366F1" },
+    emerald: { name: "Emerald", hex: "#10B981" },
+    amber:   { name: "Amber",   hex: "#F59E0B" },
+    rose:    { name: "Rose",    hex: "#F43F5E" },
+    violet:  { name: "Violet",  hex: "#8B5CF6" },
+  };
+
+  const STATUS_META = {
+    posted:     { label: "posted",       bgVar: "--status-posted-bg",    textVar: "--status-posted-text" },
+    scheduled:  { label: "Scheduled",    bgVar: "--status-scheduled-bg", textVar: "--status-scheduled-text" },
+    ready:      { label: "ready",        bgVar: "--status-ready-bg",     textVar: "--status-ready-text" },
+    needReview: { label: "need review",  bgVar: "--status-review-bg",    textVar: "--status-review-text" },
+  };
+
+  const ROWS = [
+    { title: "5 AI Tools Nobody Told You About", tags: [], status: "posted", date: "Aug 10, 2026" },
+    { title: "The Hook Formula I Steal From Ads", tags: [], status: "posted", date: "Aug 10, 2026" },
+    { title: "Why I Rebuilt My Whole Workflow", tags: [], status: "posted", date: "Aug 19, 2026" },
+    { title: "This Prompt Cut My Editing Time in Half", tags: [], status: "posted", date: "Aug 20, 2026" },
+    { title: "Nobody Is Talking About This Feature", tags: [], status: "posted", date: "Aug 19, 2026" },
+    { title: "Why Your Landing Page Isn't Converting", tags: ["Garry Audie"], status: "posted", date: "Aug 21, 2026" },
+    { title: "Stop Posting Without Doing This First", tags: ["Garry Audie"], status: "posted", date: "Aug 21, 2026" },
+    { title: "The Content Loop That Never Stops", tags: ["Garry Audie"], status: "scheduled", date: "Aug 31, 2026" },
+    { title: "3 Repurposing Mistakes Killing Your Reach", tags: ["GarryTechStuff", "Garry Audie"], status: "scheduled", date: "Aug 24, 2026" },
+    { title: "How I Script a Reel in 10 Minutes", tags: [], status: "ready", date: "Aug 6, 2026" },
+    { title: "Stop Editing Reels By Hand", tags: ["GarryTechStuff"], status: "ready", date: "Aug 20, 2026" },
+    { title: "The Tool Stack Behind This Channel", tags: [], status: "ready", date: "Aug 24, 2026" },
+    { title: "This Hook Fixed My Retention Problem", tags: [], status: "needReview", date: "Aug 25, 2026" },
+  ];
+
+  const FILTERS = [
+    { key: "all", label: "All" },
+    { key: "posted", label: "Posted" },
+    { key: "scheduled", label: "Scheduled" },
+    { key: "ready", label: "Ready" },
+    { key: "needReview", label: "Need review" },
+  ];
+
+  let currentFilter = "all";
+
+  /* ---------- sidebar (mobile) ---------- */
+  const sidebar = document.getElementById("sidebar");
+  const overlay = document.getElementById("overlay");
+  document.getElementById("openSidebar").onclick = () => { sidebar.classList.add("open"); overlay.classList.add("show"); };
+  document.getElementById("closeSidebar").onclick = closeSidebar;
+  overlay.onclick = closeSidebar;
+  function closeSidebar(){ sidebar.classList.remove("open"); overlay.classList.remove("show"); }
+
+  /* ---------- profile dropdown ---------- */
+  const profileBtn = document.getElementById("profileBtn");
+  const profileMenu = document.getElementById("profileMenu");
+  profileBtn.onclick = (e) => {
+    e.stopPropagation();
+    profileMenu.classList.toggle("show");
+    profileBtn.classList.toggle("open");
+  };
+  document.addEventListener("click", (e) => {
+    if (!profileMenu.contains(e.target) && e.target !== profileBtn && !profileBtn.contains(e.target)) {
+      profileMenu.classList.remove("show");
+      profileBtn.classList.remove("open");
+    }
+  });
+  document.getElementById("profileLink").onclick = () => {
+    profileMenu.classList.remove("show");
+    profileBtn.classList.remove("open");
+  };
+  document.getElementById("logoutLink").onclick = () => {
+    profileMenu.classList.remove("show");
+    profileBtn.classList.remove("open");
+  };
+
+  /* ---------- dark / light toggle ---------- */
+  const themeToggle = document.getElementById("themeToggle");
+  const toggleIcon = document.getElementById("toggleIcon");
+  themeToggle.onclick = () => {
+    document.body.classList.toggle("light");
+    const isLight = document.body.classList.contains("light");
+    toggleIcon.className = isLight ? "fa-solid fa-sun" : "fa-solid fa-moon";
+  };
+
+  /* ---------- theme color picker ---------- */
+  const swatchesEl = document.getElementById("swatches");
+  let activeAccent = "indigo";
+  Object.entries(ACCENTS).forEach(([key, val]) => {
+    const btn = document.createElement("button");
+    btn.className = "swatch" + (key === activeAccent ? " active" : "");
+    btn.style.background = val.hex;
+    btn.style.color = val.hex;
+    btn.title = val.name;
+    btn.innerHTML = key === activeAccent ? '<i class="fa-solid fa-check" style="color:#fff;"></i>' : "";
+    btn.onclick = () => {
+      activeAccent = key;
+      document.documentElement.style.setProperty("--accent", val.hex);
+      document.querySelectorAll(".swatch").forEach(s => { s.classList.remove("active"); s.innerHTML = ""; });
+      btn.classList.add("active");
+      btn.innerHTML = '<i class="fa-solid fa-check" style="color:#fff;"></i>';
+    };
+    swatchesEl.appendChild(btn);
+  });
+
+  const paletteBtn = document.getElementById("paletteBtn");
+  const themePanel = document.getElementById("themePanel");
+  paletteBtn.onclick = (e) => { e.stopPropagation(); themePanel.classList.toggle("show"); };
+  document.addEventListener("click", (e) => {
+    if (!themePanel.contains(e.target) && e.target !== paletteBtn) themePanel.classList.remove("show");
+  });
+
+  /* ---------- filters ---------- */
+  const filtersEl = document.getElementById("filters");
+  FILTERS.forEach(f => {
+    const btn = document.createElement("button");
+    btn.className = "filter-btn" + (f.key === "all" ? " active" : "");
+    btn.textContent = f.label;
+    btn.dataset.key = f.key;
+    btn.onclick = () => {
+      currentFilter = f.key;
+      document.querySelectorAll(".filter-btn").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      render();
+    };
+    filtersEl.appendChild(btn);
+  });
+
+  /* ---------- render table + cards ---------- */
+  const tableBody = document.getElementById("tableBody");
+  const cardList = document.getElementById("cardList");
+  const emptyState = document.getElementById("emptyState");
+
+  function tagsHtml(tags){
+    if (!tags.length) return "";
+    return `<div class="tags">${tags.map(t => `<span class="tag">${t}</span>`).join("")}</div>`;
+  }
+
+  function render(){
+    const rows = currentFilter === "all" ? ROWS : ROWS.filter(r => r.status === currentFilter);
+    tableBody.innerHTML = "";
+    cardList.innerHTML = "";
+    emptyState.style.display = rows.length ? "none" : "block";
+
+    rows.forEach(row => {
+      const meta = STATUS_META[row.status];
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="title-cell">
+          <div class="title-text">${row.title}</div>
+          ${tagsHtml(row.tags)}
+        </td>
+        <td><span class="pill pill-normal">normal</span></td>
+        <td><span class="pill" style="background:var(${meta.bgVar});color:var(${meta.textVar});">${meta.label}</span></td>
+        <td class="date-cell">${row.date}</td>
+        <td><span class="pill pill-drive"><i class="fa-brands fa-google-drive"></i> Google Drive <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:9px;"></i></span></td>
+        <td class="action-cell"><button class="review-btn">Open Review</button></td>
+      `;
+      tableBody.appendChild(tr);
+
+      const card = document.createElement("div");
+      card.className = "card";
+      card.innerHTML = `
+        <div class="card-top">
+          <div>
+            <div class="card-title">${row.title}</div>
+            ${tagsHtml(row.tags)}
+          </div>
+          <span class="pill" style="background:var(${meta.bgVar});color:var(${meta.textVar});">${meta.label}</span>
+        </div>
+        <div class="card-footer">
+          <span>${row.date}</span>
+          <span class="pill pill-drive"><i class="fa-brands fa-google-drive"></i> Drive</span>
+        </div>
+        <button class="review-btn">Open Review</button>
+      `;
+      cardList.appendChild(card);
+    });
+  }
+
+  render();
+</script>
+
+</body>
+</html>
