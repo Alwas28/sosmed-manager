@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Services\Content\ContentPublishService;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Http;
 use Livewire\Volt\Volt;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 use Tests\TestCase;
@@ -136,18 +137,11 @@ class ContentPublishTest extends TestCase
         $this->assertDatabaseHas('content_logs', ['content_id' => $content->id, 'action' => 'publish_failed']);
     }
 
-    public function test_publish_auto_resolves_a_channel_by_matching_platform_service(): void
+    /** Sets up an Approved content targeting Facebook with a real matching channel connected. */
+    private function contentWithResolvableChannel(): Content
     {
-        // Once a channel *does* exist for the platform, it should be picked
-        // up automatically (no manual "pick a channel" step exists yet) and
-        // the flow should reach Buffer's own connection check next.
-        $publisher = $this->userWithRole('publisher');
         $content = $this->approvedContent();
         ContentPlatform::create(['content_id' => $content->id, 'platform' => 'facebook']);
-        // A connection row is required by the FK, and — since one now
-        // exists — BufferPostService's own connection check passes too, so
-        // the flow reaches its final (deliberate, "not implemented yet")
-        // stub message rather than either of the channel-resolution errors.
         $connection = BufferConnection::create(['access_token' => 'fake-token-for-test']);
         SocialChannel::create([
             'buffer_connection_id' => $connection->id,
@@ -157,15 +151,73 @@ class ContentPublishTest extends TestCase
             'is_active' => true,
         ]);
 
+        return $content;
+    }
+
+    public function test_publish_succeeds_with_a_real_createpost_response(): void
+    {
+        // The channel resolves automatically (no manual "pick a channel"
+        // step exists yet) purely by matching platform -> SocialChannel
+        // service, and a successful `createPost` response is stored.
+        config()->set('services.buffer.api_base', 'https://api.buffer.test');
+        Http::fake([
+            'https://api.buffer.test*' => Http::response(['data' => ['createPost' => [
+                '__typename' => 'PostActionSuccess',
+                'post' => ['id' => 'post-123', 'text' => 'hi', 'dueAt' => null],
+            ]]]),
+        ]);
+
+        $publisher = $this->userWithRole('publisher');
+        $content = $this->contentWithResolvableChannel();
+
         $this->actingAs($publisher);
 
         Volt::test('pages.contents.show', ['content' => $content])
             ->call('publishNow')
-            ->assertDontSee('Belum ada channel Buffer yang terhubung', false)
-            ->assertSee('belum diimplementasikan', false);
+            ->assertSee('Dipublikasikan');
+
+        $content->refresh();
+        $this->assertSame(ContentStatus::Published, $content->status);
+        $this->assertNotNull($content->published_at);
+        $this->assertSame(['post-123'], $content->buffer_post_ids);
+
+        Http::assertSent(function ($request) {
+            $input = $request->data()['variables']['input'] ?? [];
+
+            return $input['channelId'] === 'abc123'
+                && $input['mode'] === 'shareNow'
+                && $input['schedulingType'] === 'automatic';
+        });
+    }
+
+    public function test_publish_surfaces_a_mutation_error_from_buffer(): void
+    {
+        // A real Buffer-side rejection (MutationError, e.g. InvalidInputError)
+        // must fail the content honestly with Buffer's own message, not a
+        // generic one.
+        config()->set('services.buffer.api_base', 'https://api.buffer.test');
+        Http::fake([
+            'https://api.buffer.test*' => Http::response(['data' => ['createPost' => [
+                '__typename' => 'InvalidInputError',
+                'message' => 'Caption melebihi batas karakter platform ini.',
+            ]]]),
+        ]);
+
+        $publisher = $this->userWithRole('publisher');
+        $content = $this->contentWithResolvableChannel();
+
+        $this->actingAs($publisher);
+
+        Volt::test('pages.contents.show', ['content' => $content])
+            ->call('publishNow')
+            ->assertSee('Caption melebihi batas karakter platform ini.', false);
 
         $content->refresh();
         $this->assertSame(ContentStatus::Failed, $content->status);
+        $this->assertDatabaseHas('content_logs', [
+            'content_id' => $content->id,
+            'action' => 'publish_failed',
+        ]);
     }
 
     public function test_mark_published_manually_moves_to_published(): void

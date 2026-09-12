@@ -14,20 +14,20 @@ use Illuminate\Support\Collection;
 
 /**
  * The step after the Approval Workflow (Blueprint §8/§10): Disetujui →
- * Terjadwal → Dipublikasikan, via Buffer.
+ * Terjadwal → Dipublikasikan, via Buffer's real `createPost` GraphQL
+ * mutation (see BufferPostService).
  *
  * A content's platform never has a Buffer channel picked for it (no picker
  * UI exists yet — the content form only stores plain platform strings), so
  * publishViaBuffer() resolves one automatically by matching platform →
  * SocialChannel::service, failing with a clear, actionable message when
- * none is connected rather than a generic one. BufferPostService::schedule()
- * still deliberately throws beyond that — the real `createPost` GraphQL
- * mutation isn't implemented yet, and no user has walked the Buffer OAuth
- * connect flow to test against. Either way, every failure records the
- * *real* reason (status → Gagal, logged) instead of the button silently
- * doing nothing. markPublishedManually() is the practical fallback for
- * "I published this myself outside the system" until Buffer publish
- * actually works end to end.
+ * none is connected rather than a generic one. Every failure — no matching
+ * channel, or a real Buffer-side error — records the *real* reason
+ * (status → Gagal, logged) instead of the button silently doing nothing.
+ * markPublishedManually() is the practical fallback for "I published this
+ * myself outside the system" for whenever Buffer publish still can't be
+ * used (not connected yet, a platform has no channel, Buffer itself
+ * rejects the post, …).
  */
 class ContentPublishService
 {
@@ -108,12 +108,15 @@ class ContentPublishService
         }
 
         try {
-            $result = app(BufferPostService::class)->schedule($resolved['channels'], (string) $content->caption, ['now' => true]);
+            $result = app(BufferPostService::class)->schedule($resolved['channels'], (string) $content->caption, [
+                'now' => true,
+                'media' => $content->media,
+            ]);
 
             $content->update([
                 'status' => ContentStatus::Published,
                 'published_at' => now(),
-                'buffer_post_ids' => $result,
+                'buffer_post_ids' => $result['postIds'],
             ]);
             $content->logActivity('published', $from, ContentStatus::Published->value, 'Dipublikasikan via Buffer oleh '.$user->name.'.');
         } catch (BufferException $e) {
