@@ -9,12 +9,12 @@ use Illuminate\Support\Carbon;
 
 /**
  * Creates / schedules posts on Buffer (Blueprint §10) via the `createPost`
- * GraphQL mutation. Schema verified against Buffer's own docs (2026-09,
+ * GraphQL mutation. Schema built from Buffer's own docs (2026-09,
  * developers.buffer.com/reference.html + /examples/create-text-post.html +
- * /examples/create-image-post.html + /guides/error-handling.html) — this is
- * the one part of the Buffer integration nobody has been able to exercise
- * against a real, live connection yet, so it's built from documentation
- * rather than reverse-engineered like BufferService::account()/channels().
+ * /examples/create-image-post.html + /guides/error-handling.html) rather
+ * than reverse-engineered live like BufferService::account()/channels(),
+ * since nobody had exercised this mutation against a real connection when
+ * it was first written.
  *
  * `createPost` takes exactly one channelId per call — there's no bulk/
  * multi-channel mutation — so posting to several selected platforms means
@@ -22,10 +22,18 @@ use Illuminate\Support\Carbon;
  * others don't) is treated as an overall failure so a Content's status
  * never claims "Published" when it wasn't published everywhere selected;
  * any posts that DID go out on Buffer are still returned in `postIds`.
+ *
+ * Always fetches its token via BufferAuthService::freshAccessToken()
+ * (refreshes an expiring OAuth token first) rather than the raw
+ * BufferConnection::access_token — using the raw column directly was a
+ * real bug in an earlier version of this class: it worked right after
+ * connecting (token still fresh) but broke on the user's real deployed
+ * server once the access token had actually expired, surfacing as Buffer's
+ * own "Access token is not valid" (401 UNAUTHENTICATED).
  */
 class BufferPostService
 {
-    public function __construct(private BufferService $buffer) {}
+    public function __construct(private BufferService $buffer, private BufferAuthService $auth) {}
 
     /**
      * @param  iterable<SocialChannel>  $channels
@@ -64,7 +72,12 @@ class BufferPostService
 
         $assets = $this->buildAssets($options['media'] ?? []);
         $mutation = $this->createPostMutation();
-        $client = $this->buffer->withToken($connection->access_token);
+        // Reuse the same refresh-if-needed accessor BufferAuthService's own
+        // account()/channels() calls rely on, instead of the possibly-
+        // expired token stored on the row — this is what silently broke
+        // real publishing the first time around ("Access token is not
+        // valid": the raw stored token was used straight, un-refreshed).
+        $client = $this->buffer->withToken($this->auth->freshAccessToken($connection));
 
         $postIds = [];
         $errors = [];

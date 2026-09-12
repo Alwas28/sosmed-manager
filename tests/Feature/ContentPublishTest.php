@@ -190,6 +190,59 @@ class ContentPublishTest extends TestCase
         });
     }
 
+    public function test_publish_refreshes_an_expiring_access_token_before_calling_buffer(): void
+    {
+        // Regression test: an earlier version of BufferPostService used
+        // BufferConnection::access_token straight, un-refreshed — worked
+        // right after connecting, broke for real once the token actually
+        // expired ("Access token is not valid" on the deployed server).
+        config()->set('services.buffer.client_id', 'test-client');
+        config()->set('services.buffer.client_secret', 'test-secret');
+        config()->set('services.buffer.token_url', 'https://auth.buffer.test/token');
+        config()->set('services.buffer.api_base', 'https://api.buffer.test');
+
+        Http::fake([
+            'https://auth.buffer.test/token' => Http::response([
+                'access_token' => 'brand-new-token',
+                'refresh_token' => 'new-refresh',
+                'expires_in' => 3600,
+            ]),
+            'https://api.buffer.test*' => Http::response(['data' => ['createPost' => [
+                '__typename' => 'PostActionSuccess',
+                'post' => ['id' => 'post-999', 'text' => 'hi', 'dueAt' => null],
+            ]]]),
+        ]);
+
+        $publisher = $this->userWithRole('publisher');
+        $content = $this->approvedContent();
+        ContentPlatform::create(['content_id' => $content->id, 'platform' => 'facebook']);
+        $connection = BufferConnection::create([
+            'access_token' => 'stale-expired-token',
+            'refresh_token' => 'old-refresh',
+            'token_expires_at' => now()->subMinutes(10),
+        ]);
+        SocialChannel::create([
+            'buffer_connection_id' => $connection->id,
+            'buffer_profile_id' => 'abc123',
+            'service' => 'facebook',
+            'display_name' => 'Halaman Test',
+            'is_active' => true,
+        ]);
+
+        $this->actingAs($publisher);
+
+        Volt::test('pages.contents.show', ['content' => $content])->call('publishNow');
+
+        $content->refresh();
+        $this->assertSame(ContentStatus::Published, $content->status);
+
+        // The refreshed token — not the stale one — must be what actually
+        // reached Buffer's createPost call.
+        Http::assertSent(fn ($request) => str_starts_with($request->url(), 'https://api.buffer.test')
+            && $request->hasHeader('Authorization', 'Bearer brand-new-token'));
+        $this->assertSame('brand-new-token', $connection->fresh()->access_token);
+    }
+
     public function test_publish_surfaces_a_mutation_error_from_buffer(): void
     {
         // A real Buffer-side rejection (MutationError, e.g. InvalidInputError)
