@@ -3,8 +3,11 @@
 namespace Tests\Feature;
 
 use App\Enums\ContentStatus;
+use App\Models\BufferConnection;
 use App\Models\Content;
+use App\Models\ContentPlatform;
 use App\Models\Role;
+use App\Models\SocialChannel;
 use App\Models\User;
 use App\Services\Content\ContentPublishService;
 use Database\Seeders\RolePermissionSeeder;
@@ -15,12 +18,15 @@ use Tests\TestCase;
 
 /**
  * The step after the Approval Workflow (Blueprint §8/§10): Disetujui →
- * Terjadwal → Dipublikasikan. Buffer's real publish (`createPost`) isn't
- * implemented yet — no user has connected a real Buffer account to test
- * against — so publishViaBuffer() is expected to fail honestly (Buffer
- * Exception "Buffer belum terhubung.") and move the content to Gagal with
- * the reason logged, rather than silently doing nothing. That's exactly
- * what's asserted here; markPublishedManually() is the practical fallback.
+ * Terjadwal → Dipublikasikan. A content's platform never has a Buffer
+ * channel picked for it (no picker UI exists), so publishViaBuffer() must
+ * resolve one automatically by matching platform → SocialChannel::service —
+ * and fail with a clear, actionable message (not a generic one) when no
+ * matching channel is connected yet. Buffer's real publish (`createPost`)
+ * itself also isn't implemented yet, so even with a channel resolved the
+ * flow still fails honestly one layer further in — every failure moves the
+ * content to Gagal with the real reason logged, never silently no-ops.
+ * markPublishedManually() is the practical fallback.
  */
 class ContentPublishTest extends TestCase
 {
@@ -108,24 +114,58 @@ class ContentPublishTest extends TestCase
         $this->assertNull($content->scheduled_at);
     }
 
-    public function test_publish_without_buffer_connection_fails_honestly_and_logs_the_reason(): void
+    public function test_publish_without_any_connected_channel_fails_with_an_actionable_message(): void
     {
+        // The real gap the user hit: content_platforms.social_channel_id is
+        // never set by any UI yet, and no SocialChannel exists at all here —
+        // this must fail with a clear "go connect a channel" message, not a
+        // generic/unrelated one, and never silently succeed.
         $publisher = $this->userWithRole('publisher');
         $content = $this->approvedContent();
+        ContentPlatform::create(['content_id' => $content->id, 'platform' => 'facebook']);
 
         $this->actingAs($publisher);
 
         Volt::test('pages.contents.show', ['content' => $content])
             ->call('publishNow')
-            ->assertSee('Buffer belum terhubung', false);
+            ->assertSee('Belum ada channel Buffer yang terhubung', false)
+            ->assertSee('Facebook', false);
 
         $content->refresh();
         $this->assertSame(ContentStatus::Failed, $content->status);
-        $this->assertDatabaseHas('content_logs', [
-            'content_id' => $content->id,
-            'action' => 'publish_failed',
-            'note' => 'Buffer belum terhubung.',
+        $this->assertDatabaseHas('content_logs', ['content_id' => $content->id, 'action' => 'publish_failed']);
+    }
+
+    public function test_publish_auto_resolves_a_channel_by_matching_platform_service(): void
+    {
+        // Once a channel *does* exist for the platform, it should be picked
+        // up automatically (no manual "pick a channel" step exists yet) and
+        // the flow should reach Buffer's own connection check next.
+        $publisher = $this->userWithRole('publisher');
+        $content = $this->approvedContent();
+        ContentPlatform::create(['content_id' => $content->id, 'platform' => 'facebook']);
+        // A connection row is required by the FK, and — since one now
+        // exists — BufferPostService's own connection check passes too, so
+        // the flow reaches its final (deliberate, "not implemented yet")
+        // stub message rather than either of the channel-resolution errors.
+        $connection = BufferConnection::create(['access_token' => 'fake-token-for-test']);
+        SocialChannel::create([
+            'buffer_connection_id' => $connection->id,
+            'buffer_profile_id' => 'abc123',
+            'service' => 'facebook',
+            'display_name' => 'Halaman Test',
+            'is_active' => true,
         ]);
+
+        $this->actingAs($publisher);
+
+        Volt::test('pages.contents.show', ['content' => $content])
+            ->call('publishNow')
+            ->assertDontSee('Belum ada channel Buffer yang terhubung', false)
+            ->assertSee('belum diimplementasikan', false);
+
+        $content->refresh();
+        $this->assertSame(ContentStatus::Failed, $content->status);
     }
 
     public function test_mark_published_manually_moves_to_published(): void
