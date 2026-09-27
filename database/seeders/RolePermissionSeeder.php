@@ -72,6 +72,10 @@ class RolePermissionSeeder extends Seeder
             }
         }
 
+        // Seeder dipakai untuk instalasi baru — Threads perlu ikut di daftar
+        // ini juga (bukan cuma migrasi 2026_09_27_140001, yang hanya untuk
+        // database yang sudah ada).
+
         $allSlugs = [];
 
         foreach ($groups as $group => $permissions) {

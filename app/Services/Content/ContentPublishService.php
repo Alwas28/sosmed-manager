@@ -46,6 +46,7 @@ class ContentPublishService
         'twitter' => ['twitter', 'x'],
         'linkedin' => ['linkedin'],
         'tiktok' => ['tiktok'],
+        'threads' => ['threads'],
     ];
 
     /**

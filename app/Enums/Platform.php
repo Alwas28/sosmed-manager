@@ -9,6 +9,7 @@ enum Platform: string
     case Twitter = 'twitter';
     case Linkedin = 'linkedin';
     case Tiktok = 'tiktok';
+    case Threads = 'threads';
 
     public function label(): string
     {
@@ -18,6 +19,7 @@ enum Platform: string
             self::Twitter => 'X / Twitter',
             self::Linkedin => 'LinkedIn',
             self::Tiktok => 'TikTok',
+            self::Threads => 'Threads',
         };
     }
 
@@ -29,6 +31,7 @@ enum Platform: string
             self::Twitter => 'fa-brands fa-x-twitter',
             self::Linkedin => 'fa-brands fa-linkedin',
             self::Tiktok => 'fa-brands fa-tiktok',
+            self::Threads => 'fa-brands fa-threads',
         };
     }
 
