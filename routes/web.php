@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\BufferController;
+use App\Http\Controllers\ReportExportController;
 use App\Support\AdminMenu;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -78,10 +79,17 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Approval workflow
     Volt::route('approval', 'pages.approval.queue')->middleware('can:approval.view')->name('approval.queue');
 
+    // Log Aktivitas & dashboard kesibukan pengguna
+    Volt::route('log-aktivitas', 'pages.logs.index')->middleware('can:log.view')->name('logs');
+
+    // Laporan
+    Volt::route('laporan','pages.reports.index')->middleware('can:report.view')->name('reports');
+    Route::get('laporan/unduh', [ReportExportController::class, 'export'])->middleware('can:report.export')->name('reports.export');
+
     // Pengaturan — Integrasi AI
     Volt::route('pengaturan/ai', 'pages.settings.ai')->middleware('can:ai.manage')->name('ai.settings');
-    Volt::route('pengaturan/generate-gambar', 'pages.settings.image-ai')->middleware('can:ai.manage')->name('image-ai.settings');
-    Volt::route('pengaturan/template-postingan', 'pages.settings.post-template')->middleware('can:ai.manage')->name('post-template.settings');
+    Volt::route('pengaturan/generate-gambar', 'pages.settings.image-ai')->middleware('can:image_ai.manage')->name('image-ai.settings');
+    Volt::route('pengaturan/template-postingan', 'pages.settings.post-template')->middleware('can:template.manage')->name('post-template.settings');
 
     /*
      | Modul SIM_Sosmed lain — masih placeholder (mengikuti roadmap Blueprint).

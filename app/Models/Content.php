@@ -80,12 +80,16 @@ class Content extends Model
 
     public function logActivity(string $action, ?string $from = null, ?string $to = null, ?string $note = null): ContentLog
     {
-        return $this->logs()->create([
+        $log = $this->logs()->create([
             'user_id' => auth()->id(),
             'action' => $action,
             'from_status' => $from,
             'to_status' => $to,
             'note' => $note,
         ]);
+
+        ActivityLog::record($action, trim($this->title.($note ? ' — '.$note : '')), $this, meta: array_filter(['from' => $from, 'to' => $to]));
+
+        return $log;
     }
 }

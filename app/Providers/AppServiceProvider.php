@@ -2,7 +2,11 @@
 
 namespace App\Providers;
 
+use App\Models\ActivityLog;
 use App\Models\User;
+use Illuminate\Auth\Events\Login;
+use Illuminate\Auth\Events\Logout;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
 
@@ -21,6 +25,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        Event::listen(Login::class, fn (Login $event) => ActivityLog::record('login', 'Masuk ke sistem.', userId: $event->user->getAuthIdentifier()));
+        Event::listen(Logout::class, function (Logout $event) {
+            if ($event->user) {
+                ActivityLog::record('logout', 'Keluar dari sistem.', userId: $event->user->getAuthIdentifier());
+            }
+        });
+
         Gate::before(function (User $user, string $ability) {
             // Administrator lolos setiap pemeriksaan.
             if ($user->isAdministrator()) {

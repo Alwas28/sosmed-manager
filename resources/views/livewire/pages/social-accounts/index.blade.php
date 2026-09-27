@@ -41,23 +41,29 @@ new #[Layout('components.admin-layout', ['title' => 'Akun Social Media', 'subtit
                     <i class="{{ $channels->first()->iconClass() }}"></i> {{ $channels->first()->serviceLabel() }}
                     <span class="badge">{{ $channels->count() }}</span>
                 </h2>
-                <div class="table-wrap" style="margin-top:8px;">
-                    <table>
-                        <thead>
-                            <tr><th>Akun</th><th>Tipe</th><th>Zona Waktu</th><th>Buffer Profile ID</th><th>Status</th></tr>
-                        </thead>
-                        <tbody>
-                            @foreach ($channels as $channel)
-                                <tr>
-                                    <td class="title-text">{{ $channel->username ?? $channel->display_name ?? '—' }}</td>
-                                    <td class="date-cell">{{ $channel->service_type ?? '—' }}</td>
-                                    <td class="date-cell">{{ $channel->timezone ?? '—' }}</td>
-                                    <td class="date-cell"><code>{{ $channel->buffer_profile_id }}</code></td>
-                                    <td><span class="badge {{ $channel->is_active ? 'badge-accent' : '' }}">{{ $channel->is_active ? 'aktif' : 'nonaktif' }}</span></td>
-                                </tr>
-                            @endforeach
-                        </tbody>
-                    </table>
+                <div class="channel-grid">
+                    @foreach ($channels as $channel)
+                        <div class="channel-card">
+                            <div class="channel-card-head">
+                                <div class="channel-icon">
+                                    @if ($channel->avatar)
+                                        <img src="{{ $channel->avatar }}" alt="">
+                                    @else
+                                        <i class="{{ $channel->iconClass() }}"></i>
+                                    @endif
+                                </div>
+                                <div class="channel-card-titles">
+                                    <div class="channel-card-title">{{ $channel->username ?? $channel->display_name ?? '—' }}</div>
+                                    <div class="channel-card-sub">{{ $channel->service_type ?? '—' }}</div>
+                                </div>
+                            </div>
+                            <div class="channel-meta">
+                                <span>Zona waktu: {{ $channel->timezone ?? '—' }}</span>
+                                <span>Buffer Profile ID: <code>{{ $channel->buffer_profile_id }}</code></span>
+                            </div>
+                            <span class="badge {{ $channel->is_active ? 'badge-accent' : '' }}" style="align-self:flex-start;">{{ $channel->is_active ? 'aktif' : 'nonaktif' }}</span>
+                        </div>
+                    @endforeach
                 </div>
             </div>
         @endforeach

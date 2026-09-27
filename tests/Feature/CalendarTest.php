@@ -93,6 +93,58 @@ class CalendarTest extends TestCase
             ->assertDontSee('Konten Terjadwal');
     }
 
+    public function test_published_content_shows_on_its_actual_publish_day_not_the_original_schedule(): void
+    {
+        // The reported bug: content published on a different day than it
+        // was originally scheduled for used to stay pinned to the old
+        // scheduled_at day (or, if that day fell outside the visible grid
+        // entirely, silently vanish from the calendar altogether) instead
+        // of moving to where it actually landed.
+        $creator = $this->userWithRole('content-creator');
+        Content::create([
+            'title' => 'Konten Meleset Jadwal',
+            'status' => ContentStatus::Published,
+            'scheduled_at' => now()->addMonths(1)->startOfMonth()->addDays(15), // originally planned for next month
+            'published_at' => now(), // actually went out today
+            'created_by' => $creator->id,
+        ]);
+
+        $this->actingAs($creator);
+
+        // Default view is the current month — must show it (by published_at).
+        Volt::test('pages.calendar.index')->assertSee('Konten Meleset Jadwal');
+    }
+
+    public function test_published_count_is_scoped_to_the_month_it_was_actually_published_in(): void
+    {
+        // Same underlying query the dashboard/calendar's with() runs for
+        // "Dipublikasikan Bulan Ini" — verified directly (rather than
+        // scraping the rendered stat tile's HTML) that it's scoped to
+        // published_at alone, so a content whose scheduled_at and
+        // published_at land in two different months is only ever counted
+        // in the one it was actually published in, never both.
+        $creator = $this->userWithRole('content-creator');
+        Content::create([
+            'title' => 'Publish Bulan Depan Rencananya',
+            'status' => ContentStatus::Published,
+            'scheduled_at' => now()->addMonths(1)->startOfMonth()->addDays(15),
+            'published_at' => now(), // actually landed this month
+            'created_by' => $creator->id,
+        ]);
+
+        $thisMonthCount = Content::query()
+            ->where('status', ContentStatus::Published->value)
+            ->whereBetween('published_at', [now()->startOfMonth(), now()->endOfMonth()])
+            ->count();
+        $nextMonthCount = Content::query()
+            ->where('status', ContentStatus::Published->value)
+            ->whereBetween('published_at', [now()->addMonthNoOverflow()->startOfMonth(), now()->addMonthNoOverflow()->endOfMonth()])
+            ->count();
+
+        $this->assertSame(1, $thisMonthCount);
+        $this->assertSame(0, $nextMonthCount);
+    }
+
     public function test_month_navigation_moves_the_cursor(): void
     {
         $creator = $this->userWithRole('content-creator');

@@ -2,6 +2,7 @@
 
 namespace App\Services\Buffer;
 
+use App\Enums\PostType;
 use App\Models\BufferConnection;
 use App\Models\Media;
 use App\Models\SocialChannel;
@@ -37,7 +38,7 @@ class BufferPostService
 
     /**
      * @param  iterable<SocialChannel>  $channels
-     * @param  array{now?: bool, scheduled_at?: \DateTimeInterface|string|null, media?: iterable<Media>}  $options
+     * @param  array{now?: bool, scheduled_at?: \DateTimeInterface|string|null, media?: iterable<Media>, post_types?: array<int, string>}  $options  `post_types` maps SocialChannel id → post/reel/story
      * @return array{postIds: array<int, string>, errors: array<int, string>}
      *
      * @throws BufferException
@@ -91,13 +92,17 @@ class BufferPostService
                 continue;
             }
 
+            $postType = $options['post_types'][$channel->id] ?? PostType::Post->value;
+
             $input = array_filter([
-                'text' => $text,
+                // Stories carry no caption on Instagram/Facebook.
+                'text' => $postType === PostType::Story->value ? null : $text,
                 'channelId' => $channel->buffer_profile_id,
                 'schedulingType' => 'automatic',
                 'mode' => $mode,
                 'dueAt' => $dueAt,
                 'assets' => $assets,
+                'metadata' => $this->buildMetadata($channel, $postType),
             ], static fn ($value) => $value !== null);
 
             try {
@@ -123,6 +128,25 @@ class BufferPostService
         }
 
         return ['postIds' => $postIds, 'errors' => $errors];
+    }
+
+    /**
+     * Buffer rejects Instagram and Facebook posts that carry no `type`
+     * (and Instagram also requires `shouldShareToFeed`); other networks
+     * need no metadata for a plain post.
+     *
+     * @return array<string, array<string, mixed>>|null
+     */
+    private function buildMetadata(SocialChannel $channel, string $postType): ?array
+    {
+        return match ($channel->service) {
+            'instagram' => ['instagram' => [
+                'type' => $postType,
+                'shouldShareToFeed' => $postType !== PostType::Story->value,
+            ]],
+            'facebook' => ['facebook' => ['type' => $postType]],
+            default => null,
+        };
     }
 
     /**

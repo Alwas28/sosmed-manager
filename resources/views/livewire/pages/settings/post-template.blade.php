@@ -108,7 +108,7 @@ new #[Layout('components.admin-layout', ['title' => 'Template Postingan', 'subti
 
     public function save(): void
     {
-        Gate::authorize('ai.manage');
+        Gate::authorize('template.manage');
         $data = $this->validate();
 
         $settings = PostTemplateSetting::current();
@@ -155,7 +155,7 @@ new #[Layout('components.admin-layout', ['title' => 'Template Postingan', 'subti
 
     public function removeLogo(): void
     {
-        Gate::authorize('ai.manage');
+        Gate::authorize('template.manage');
         $settings = PostTemplateSetting::current();
         if ($settings->logo_path) {
             Storage::disk('public')->delete($settings->logo_path);
@@ -167,7 +167,7 @@ new #[Layout('components.admin-layout', ['title' => 'Template Postingan', 'subti
 
     public function removeFont(): void
     {
-        Gate::authorize('ai.manage');
+        Gate::authorize('template.manage');
         $settings = PostTemplateSetting::current();
         if ($settings->font_path) {
             Storage::disk('public')->delete($settings->font_path);

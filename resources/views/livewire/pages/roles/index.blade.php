@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\ActivityLog;
 use App\Models\Role;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
@@ -62,12 +63,14 @@ new #[Layout('components.admin-layout', ['title' => 'Role Akses', 'subtitle' => 
                 'description' => $data['description'] ?: null,
                 'slug' => $role->is_locked ? $role->slug : Str::slug($data['name']),
             ]);
+            ActivityLog::record('role_updated', $role->name, $role);
         } else {
-            Role::create([
+            $role = Role::create([
                 'name' => $data['name'],
                 'slug' => Str::slug($data['name']),
                 'description' => $data['description'] ?: null,
             ]);
+            ActivityLog::record('role_created', $role->name, $role);
         }
 
         $this->reset(['showForm', 'editingId', 'name', 'description']);
@@ -91,6 +94,7 @@ new #[Layout('components.admin-layout', ['title' => 'Role Akses', 'subtitle' => 
             return;
         }
 
+        ActivityLog::record('role_deleted', $role->name);
         $role->delete();
         session()->flash('status', 'Role dihapus.');
     }

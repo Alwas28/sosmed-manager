@@ -50,8 +50,8 @@ class AdminMenu
                 self::item('Role Akses', 'fa-user-shield', 'roles.index', 'role-akses', 'role.view'),
                 self::item('Akses Kontrol', 'fa-key', 'access-control.index', 'akses-kontrol', 'access.manage'),
                 self::item('Integrasi AI', 'fa-robot', 'ai.settings', 'pengaturan/ai', 'ai.manage'),
-                self::item('Generate Gambar AI', 'fa-image', 'image-ai.settings', 'pengaturan/generate-gambar', 'ai.manage'),
-                self::item('Template Postingan', 'fa-stamp', 'post-template.settings', 'pengaturan/template-postingan', 'ai.manage'),
+                self::item('Generate Gambar AI', 'fa-image', 'image-ai.settings', 'pengaturan/generate-gambar', 'image_ai.manage'),
+                self::item('Template Postingan', 'fa-stamp', 'post-template.settings', 'pengaturan/template-postingan', 'template.manage'),
                 self::item('Log Aktivitas', 'fa-clock-rotate-left', 'logs', 'log-aktivitas', 'log.view'),
             ],
         ];

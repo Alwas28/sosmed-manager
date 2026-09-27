@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\ActivityLog;
 use App\Models\Permission;
 use App\Models\Role;
 use Illuminate\Support\Facades\Gate;
@@ -65,7 +66,16 @@ new #[Layout('components.admin-layout', ['title' => 'Akses Kontrol', 'subtitle' 
             return;
         }
 
-        $role->permissions()->sync(array_map('intval', $this->selected));
+        $changes = $role->permissions()->sync(array_map('intval', $this->selected));
+        $added = count($changes['attached']);
+        $removed = count($changes['detached']);
+
+        if ($added || $removed) {
+            ActivityLog::record('permissions_updated', "{$role->name}: +{$added} izin, -{$removed} izin", $role, meta: [
+                'added' => Permission::whereIn('id', $changes['attached'])->pluck('slug')->all(),
+                'removed' => Permission::whereIn('id', $changes['detached'])->pluck('slug')->all(),
+            ]);
+        }
         session()->flash('status', 'Akses untuk role '.$role->name.' berhasil diperbarui.');
     }
 

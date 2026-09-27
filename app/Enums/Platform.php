@@ -32,6 +32,44 @@ enum Platform: string
         };
     }
 
+    /** @return array<int, PostType> jenis postingan yang bisa dipilih untuk platform ini */
+    public function postTypes(): array
+    {
+        return match ($this) {
+            self::Instagram, self::Facebook => [PostType::Post, PostType::Reel, PostType::Story],
+            default => [PostType::Post],
+        };
+    }
+
+    public function defaultPostType(): PostType
+    {
+        return PostType::Post;
+    }
+
+    /** Slug izin role untuk memposting dengan jenis tertentu, mis. "post.instagram.story". */
+    public function postPermission(PostType $type): string
+    {
+        return "post.{$this->value}.{$type->value}";
+    }
+
+    /** @return array<string, string> slug => nama izin, untuk semua jenis postingan platform ini */
+    public function postPermissions(): array
+    {
+        $names = [];
+
+        foreach ($this->postTypes() as $type) {
+            $names[$this->postPermission($type)] = 'Posting '.$this->label().' — '.$type->label($this);
+        }
+
+        return $names;
+    }
+
+    /** Platform ini menolak postingan tanpa media sama sekali. */
+    public function requiresMedia(): bool
+    {
+        return in_array($this, [self::Instagram, self::Tiktok], true);
+    }
+
     /** @return array<int, string> */
     public static function values(): array
     {

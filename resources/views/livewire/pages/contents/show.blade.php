@@ -90,7 +90,15 @@ new #[Layout('components.admin-layout', ['title' => 'Detail Konten', 'subtitle' 
             'scheduleAt' => ['required', 'date', 'after_or_equal:now'],
         ], attributes: ['scheduleAt' => 'tanggal & waktu jadwal']);
 
-        app(ContentPublishService::class)->schedule($this->content, auth()->user(), Carbon::parse($this->scheduleAt));
+        $service = app(ContentPublishService::class);
+
+        if ($forbidden = $service->forbiddenPlatforms($this->content, auth()->user())) {
+            session()->flash('error', 'Anda tidak punya akses posting ke: '.implode(', ', $forbidden).'.');
+
+            return;
+        }
+
+        $service->schedule($this->content, auth()->user(), Carbon::parse($this->scheduleAt));
         $this->reset('scheduling', 'scheduleAt');
         $this->content->refresh()->load('logs.user');
         session()->flash('status', 'Konten dijadwalkan untuk '.$this->content->scheduled_at->format('d M Y H:i').'.');
@@ -317,7 +325,7 @@ new #[Layout('components.admin-layout', ['title' => 'Detail Konten', 'subtitle' 
             @php($cat = $content->category ?? \App\Enums\ContentCategory::Umum)
             <span class="chip" style="background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);"><i class="{{ $cat->icon() }}"></i> {{ $cat->label() }}</span>
             @forelse ($content->platforms as $p)
-                <span class="chip"><i class="{{ \App\Enums\Platform::tryIcon($p->platform) }}"></i> {{ \App\Enums\Platform::tryLabel($p->platform) }}</span>
+                <span class="chip"><i class="{{ \App\Enums\Platform::tryIcon($p->platform) }}"></i> {{ \App\Enums\Platform::tryLabel($p->platform) }} · {{ $p->postTypeLabel() }}</span>
             @empty
                 <span class="chip">Tanpa platform</span>
             @endforelse

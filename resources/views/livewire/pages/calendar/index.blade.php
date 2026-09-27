@@ -69,7 +69,12 @@ new #[Layout('components.admin-layout', ['title' => 'Kalender Konten', 'subtitle
 
         $byDay = [];
         foreach ($this->datedQuery($gridStart, $gridEnd)->orderBy('scheduled_at')->get() as $content) {
-            $date = ($content->scheduled_at ?? $content->published_at)?->format('Y-m-d');
+            // Once actually published, that real date is what belongs on
+            // the grid — not the original plan, which the content may well
+            // have missed (published early, retried after Gagal on a later
+            // day, etc.). Only fall back to scheduled_at while it's still
+            // just planned (published_at not set yet).
+            $date = ($content->published_at ?? $content->scheduled_at)?->format('Y-m-d');
             if ($date !== null) {
                 $byDay[$date][] = $content;
             }
@@ -103,8 +108,21 @@ new #[Layout('components.admin-layout', ['title' => 'Kalender Konten', 'subtitle
         return [
             'weeks' => $weeks,
             'monthLabel' => self::MONTHS[$this->month].' '.$this->year,
-            'scheduledCount' => $this->datedQuery($monthStart, $monthEnd)->where('status', ContentStatus::Scheduled->value)->count(),
-            'publishedCount' => $this->datedQuery($monthStart, $monthEnd)->where('status', ContentStatus::Published->value)->count(),
+            // Each tile is inherently scoped to its own status already, so
+            // it's counted straight off the one date column that actually
+            // matters for it (never the other) — using datedQuery()'s
+            // either-column OR here would double-count a content whose
+            // scheduled_at and published_at land in two different months,
+            // and stacking the page's statusFilter on top of an explicit
+            // status here would zero the tile out for any other filter.
+            'scheduledCount' => Content::query()
+                ->where('status', ContentStatus::Scheduled->value)
+                ->whereBetween('scheduled_at', [$monthStart, $monthEnd])
+                ->count(),
+            'publishedCount' => Content::query()
+                ->where('status', ContentStatus::Published->value)
+                ->whereBetween('published_at', [$monthStart, $monthEnd])
+                ->count(),
             'unscheduledTotal' => (clone $unscheduledBase)->count(),
             'unscheduled' => (clone $unscheduledBase)->latest()->take(10)->get(),
             'allStatuses' => ContentStatus::cases(),

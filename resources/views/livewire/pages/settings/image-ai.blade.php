@@ -41,7 +41,7 @@ new #[Layout('components.admin-layout', ['title' => 'Generate Gambar AI', 'subti
 
     public function newProfile(): void
     {
-        Gate::authorize('ai.manage');
+        Gate::authorize('image_ai.manage');
         $this->reset(['editingId', 'label', 'model', 'apiKey', 'baseUrl', 'hasStoredKey']);
         $this->provider = 'openai';
         $this->size = '1024x1024';
@@ -52,7 +52,7 @@ new #[Layout('components.admin-layout', ['title' => 'Generate Gambar AI', 'subti
 
     public function edit(int $id): void
     {
-        Gate::authorize('ai.manage');
+        Gate::authorize('image_ai.manage');
         $profile = ImageAiProfile::findOrFail($id);
 
         $this->editingId = $profile->id;
@@ -82,7 +82,7 @@ new #[Layout('components.admin-layout', ['title' => 'Generate Gambar AI', 'subti
 
     public function save(): void
     {
-        Gate::authorize('ai.manage');
+        Gate::authorize('image_ai.manage');
         $data = $this->validate();
 
         if (! $this->editingId && $this->apiKey === '') {
@@ -113,14 +113,14 @@ new #[Layout('components.admin-layout', ['title' => 'Generate Gambar AI', 'subti
 
     public function toggleActive(int $id): void
     {
-        Gate::authorize('ai.manage');
+        Gate::authorize('image_ai.manage');
         $profile = ImageAiProfile::findOrFail($id);
         $profile->update(['is_active' => ! $profile->is_active]);
     }
 
     public function delete(int $id): void
     {
-        Gate::authorize('ai.manage');
+        Gate::authorize('image_ai.manage');
         ImageAiProfile::findOrFail($id)->delete();
         session()->flash('status', 'Profil dihapus.');
     }
@@ -139,7 +139,7 @@ new #[Layout('components.admin-layout', ['title' => 'Generate Gambar AI', 'subti
 
     <div class="toolbar">
         <p class="panel-sub" style="margin:0;">{{ $profiles->count() }} profil.</p>
-        @can('ai.manage')
+        @can('image_ai.manage')
             <button class="btn btn-primary btn-sm" type="button" wire:click="newProfile">
                 <i class="fa-solid fa-plus"></i> Profil Baru
             </button>

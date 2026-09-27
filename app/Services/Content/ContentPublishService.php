@@ -48,9 +48,29 @@ class ContentPublishService
         'tiktok' => ['tiktok'],
     ];
 
+    /**
+     * Platform + jenis postingan di konten ini yang TIDAK boleh diposting oleh $user
+     * (izin role "post.*" dan users.allowed_platforms) — sebagai label siap tampil.
+     *
+     * @return array<int, string>
+     */
+    public function forbiddenPlatforms(Content $content, User $user): array
+    {
+        return $content->platforms
+            ->reject(fn ($cp) => $user->canPostTo($cp->platform, $cp->post_type ?: 'post'))
+            ->map(fn ($cp) => Platform::tryLabel($cp->platform).' ('.$cp->postTypeLabel().')')
+            ->values()
+            ->all();
+    }
+
     public function schedule(Content $content, User $user, Carbon $scheduledAt): void
     {
         abort_unless($content->status === ContentStatus::Approved, 422, 'Hanya konten yang sudah disetujui yang bisa dijadwalkan.');
+        abort_if(
+            ($forbidden = $this->forbiddenPlatforms($content, $user)) !== [],
+            403,
+            'Anda tidak punya akses posting ke: '.implode(', ', $forbidden).'.',
+        );
 
         $content->update([
             'status' => ContentStatus::Scheduled,
@@ -93,6 +113,10 @@ class ContentPublishService
             'Konten ini belum siap untuk dipublikasikan.',
         );
 
+        if (($forbidden = $this->forbiddenPlatforms($content, $user)) !== []) {
+            throw new BufferException('Anda tidak punya akses posting ke: '.implode(', ', $forbidden).'. Minta admin mengaturnya di menu Akses Kontrol atau Pengguna.');
+        }
+
         $from = $content->status->value;
         $resolved = $this->resolveChannels($content);
 
@@ -111,6 +135,7 @@ class ContentPublishService
             $result = app(BufferPostService::class)->schedule($resolved['channels'], (string) $content->caption, [
                 'now' => true,
                 'media' => $content->media,
+                'post_types' => $resolved['postTypes'],
             ]);
 
             $content->update([
@@ -128,15 +153,16 @@ class ContentPublishService
     }
 
     /**
-     * @return array{channels: Collection<int, SocialChannel>, missing: array<int, string>}
+     * @return array{channels: Collection<int, SocialChannel>, missing: array<int, string>, postTypes: array<int, string>}
      */
     private function resolveChannels(Content $content): array
     {
         $channels = collect();
         $missing = [];
+        $postTypes = [];
 
         if ($content->platforms->isEmpty()) {
-            return ['channels' => $channels, 'missing' => ['(belum ada platform dipilih)']];
+            return ['channels' => $channels, 'missing' => ['(belum ada platform dipilih)'], 'postTypes' => $postTypes];
         }
 
         foreach ($content->platforms as $cp) {
@@ -146,12 +172,13 @@ class ContentPublishService
 
             if ($channel) {
                 $channels->push($channel);
+                $postTypes[$channel->id] = $cp->post_type ?: 'post';
             } else {
                 $missing[] = Platform::tryLabel($cp->platform);
             }
         }
 
-        return ['channels' => $channels, 'missing' => $missing];
+        return ['channels' => $channels, 'missing' => $missing, 'postTypes' => $postTypes];
     }
 
     public function markPublishedManually(Content $content, User $user): void

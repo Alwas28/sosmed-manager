@@ -2,6 +2,7 @@
 
 namespace Database\Seeders;
 
+use App\Enums\Platform;
 use App\Models\Permission;
 use App\Models\Role;
 use Illuminate\Database\Seeder;
@@ -42,10 +43,12 @@ class RolePermissionSeeder extends Seeder
             ],
             'Laporan' => [
                 'report.view' => 'Melihat laporan',
+                'report.export' => 'Mengunduh / ekspor laporan',
             ],
             'Pengguna & Akses' => [
                 'user.view' => 'Melihat daftar pengguna',
                 'user.manage' => 'Mengelola pengguna & assign role',
+                'user.platform' => 'Mengatur akses platform posting tiap pengguna',
                 'role.view' => 'Melihat daftar role',
                 'role.manage' => 'Membuat / mengubah / menghapus role',
                 'access.manage' => 'Mengatur akses kontrol tiap role',
@@ -54,8 +57,20 @@ class RolePermissionSeeder extends Seeder
             'Asisten AI' => [
                 'ai.use' => 'Memakai asisten AI di form konten',
                 'ai.manage' => 'Mengatur integrasi AI (provider & model)',
+                'image_ai.manage' => 'Mengatur generate gambar AI',
+                'template.manage' => 'Mengatur template postingan',
             ],
         ];
+
+        // Akses posting per platform & jenis postingan (mis. post.instagram.story).
+        $postSlugs = [];
+
+        foreach (Platform::cases() as $platform) {
+            foreach ($platform->postPermissions() as $slug => $name) {
+                $groups['Akses Sosial Media'][$slug] = $name;
+                $postSlugs[] = $slug;
+            }
+        }
 
         $allSlugs = [];
 
@@ -89,6 +104,7 @@ class RolePermissionSeeder extends Seeder
                     'content.view', 'content.create', 'content.edit', 'content.delete', 'content.submit',
                     'media.view', 'media.upload', 'media.delete',
                     'ai.use',
+                    ...$postSlugs,
                 ],
             ],
             [
@@ -98,7 +114,7 @@ class RolePermissionSeeder extends Seeder
                 'description' => 'Meninjau, menyetujui, atau menolak konten.',
                 'permissions' => [
                     'calendar.view', 'content.view',
-                    'approval.view', 'approval.approve', 'approval.reject', 'report.view',
+                    'approval.view', 'approval.approve', 'approval.reject', 'report.view', 'report.export',
                 ],
             ],
             [
@@ -108,7 +124,8 @@ class RolePermissionSeeder extends Seeder
                 'description' => 'Menjadwalkan dan mempublikasikan konten via Buffer.',
                 'permissions' => [
                     'calendar.view', 'content.view',
-                    'schedule.manage', 'publish.manage', 'social.view', 'buffer.manage', 'report.view',
+                    'schedule.manage', 'publish.manage', 'social.view', 'buffer.manage', 'report.view', 'report.export',
+                    ...$postSlugs,
                 ],
             ],
         ];

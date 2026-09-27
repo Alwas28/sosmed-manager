@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ActivityLog;
 use App\Models\BufferConnection;
 use App\Services\Buffer\BufferAuthService;
 use App\Services\Buffer\BufferException;
@@ -42,6 +43,8 @@ class BufferController extends Controller
             return redirect()->route('buffer')->with('error', $e->getMessage());
         }
 
+        ActivityLog::record('buffer_connected', 'Terhubung memakai access token.');
+
         return redirect()->route('buffer')->with('status', 'Buffer terhubung memakai access token.');
     }
 
@@ -75,6 +78,8 @@ class BufferController extends Controller
             return redirect()->route('buffer')->with('error', $e->getMessage());
         }
 
+        ActivityLog::record('buffer_connected', 'Terhubung lewat OAuth.');
+
         return redirect()->route('buffer')->with('status', 'Buffer berhasil terhubung.');
     }
 
@@ -92,12 +97,15 @@ class BufferController extends Controller
             return back()->with('error', $e->getMessage());
         }
 
+        ActivityLog::record('buffer_synced', "{$count} channel diperbarui.");
+
         return back()->with('status', "Sinkronisasi selesai — {$count} channel diperbarui.");
     }
 
     public function disconnect(): RedirectResponse
     {
         $this->auth->disconnect();
+        ActivityLog::record('buffer_disconnected', 'Koneksi Buffer diputus.');
 
         return redirect()->route('buffer')->with('status', 'Koneksi Buffer telah diputus.');
     }

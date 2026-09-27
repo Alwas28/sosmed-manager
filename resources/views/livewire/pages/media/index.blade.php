@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\ActivityLog;
 use App\Models\Media;
 use Illuminate\Support\Facades\Gate;
 use Livewire\Attributes\Layout;
@@ -23,7 +24,7 @@ new #[Layout('components.admin-layout', ['title' => 'Pustaka Media', 'subtitle' 
         ]);
 
         foreach ($this->uploads as $file) {
-            Media::create([
+            $media = Media::create([
                 'disk' => 'public',
                 'path' => $file->store('media/'.now()->format('Y/m'), 'public'),
                 'original_name' => $file->getClientOriginalName(),
@@ -32,6 +33,8 @@ new #[Layout('components.admin-layout', ['title' => 'Pustaka Media', 'subtitle' 
                 'size' => $file->getSize(),
                 'uploaded_by' => auth()->id(),
             ]);
+
+            ActivityLog::record('media_uploaded', $media->original_name, $media);
         }
 
         $this->uploads = [];
@@ -50,6 +53,7 @@ new #[Layout('components.admin-layout', ['title' => 'Pustaka Media', 'subtitle' 
             return;
         }
 
+        ActivityLog::record('media_deleted', $media->original_name);
         $media->delete();
         session()->flash('status', 'Media dihapus.');
     }

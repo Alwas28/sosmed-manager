@@ -307,11 +307,49 @@ tbody td{padding:12px 16px;vertical-align:top;}
 .media-tile .media-badge{position:absolute;left:6px;bottom:6px;background:rgba(0,0,0,.55);color:#fff;font-size:9px;padding:1px 6px;border-radius:999px;}
 .media-name{font-size:10.5px;color:var(--text-muted);padding:6px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
+/* ---------------- log aktivitas ---------------- */
+.period-nav{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.period-label{font-size:13px;font-weight:600;min-width:170px;text-align:center;}
+.rank-row{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px solid var(--border);}
+.rank-row:last-child{border-bottom:none;}
+.rank-num{width:22px;flex-shrink:0;text-align:center;font-size:13px;font-weight:600;color:var(--text-muted);margin-top:6px;}
+.rank-num.top{color:#F59E0B;}
+.rank-main{flex:1;min-width:0;}
+.rank-name{font-size:13px;font-weight:600;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+.rank-sub{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+.rank-count{font-size:20px;font-weight:600;flex-shrink:0;margin-top:2px;}
+.trend{display:flex;align-items:stretch;gap:3px;height:170px;}
+.trend-col{flex:1;min-width:0;display:flex;flex-direction:column;}
+.trend-plot{flex:1;display:flex;align-items:flex-end;}
+.trend-bar{width:100%;background:var(--accent);opacity:.55;border-radius:3px 3px 0 0;}
+.trend-bar.peak{opacity:1;}
+.trend-label{font-size:9.5px;color:var(--text-muted);text-align:center;margin-top:4px;height:12px;white-space:nowrap;overflow:visible;}
+
+/* ---------------- channel cards ---------------- */
+.channel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:8px;}
+.channel-card{border:1px solid var(--border);border-radius:12px;background:var(--surface-alt);padding:14px 16px;display:flex;flex-direction:column;gap:10px;}
+.channel-card-head{display:flex;align-items:center;gap:10px;min-width:0;}
+.channel-icon{width:38px;height:38px;border-radius:999px;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--accent);flex-shrink:0;overflow:hidden;}
+.channel-icon img{width:100%;height:100%;object-fit:cover;}
+.channel-card-titles{min-width:0;}
+.channel-card-title{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.channel-card-sub{font-size:11.5px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.channel-meta{font-size:11px;color:var(--text-muted);display:flex;flex-direction:column;gap:3px;}
+.channel-meta code{font-size:10.5px;}
+
 /* ---------------- content form ---------------- */
 .form-steps{counter-reset:step;max-width:720px;}
 .form-step{margin-bottom:24px;}
 .form-step-title{font-size:13px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:9px;}
 .form-step-title::before{counter-increment:step;content:counter(step);width:20px;height:20px;border-radius:999px;background:var(--accent);color:#fff;font-size:11px;display:inline-flex;align-items:center;justify-content:center;flex-shrink:0;}
+.platform-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;}
+.platform-option{border:1px solid var(--border);border-radius:10px;padding:10px 12px;}
+.platform-option.active{border-color:var(--accent);}
+.platform-option-head{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500;cursor:pointer;}
+.type-choices{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;}
+.type-choice{display:inline-flex;align-items:center;gap:6px;font-size:12px;border:1px solid var(--border);border-radius:999px;padding:5px 11px;cursor:pointer;color:var(--text-secondary);}
+.type-choice input{display:none;}
+.type-choice.on{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent);}
 .checkbox-list{display:flex;flex-wrap:wrap;gap:10px;}
 .checkbox-list label{display:flex;align-items:center;gap:8px;font-size:12.5px;border:1px solid var(--border);border-radius:8px;padding:8px 12px;cursor:pointer;}
 .checkbox-list label:has(input:checked){border-color:var(--accent);color:var(--accent);}
