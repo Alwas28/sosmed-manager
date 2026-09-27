@@ -18,7 +18,13 @@ class Content extends Model
     protected $fillable = [
         'title', 'caption', 'category', 'status', 'scheduled_at', 'published_at',
         'created_by', 'approved_by', 'buffer_post_ids',
+        'link_url', 'link_title', 'link_description',
     ];
+
+    public function isLinkPost(): bool
+    {
+        return $this->link_url !== null;
+    }
 
     protected function casts(): array
     {

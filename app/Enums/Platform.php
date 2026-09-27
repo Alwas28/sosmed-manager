@@ -38,10 +38,26 @@ enum Platform: string
     /** @return array<int, PostType> jenis postingan yang bisa dipilih untuk platform ini */
     public function postTypes(): array
     {
-        return match ($this) {
+        $types = match ($this) {
             self::Instagram, self::Facebook => [PostType::Post, PostType::Reel, PostType::Story],
             default => [PostType::Post],
         };
+
+        if ($this->supportsLinkPost()) {
+            $types[] = PostType::Link;
+        }
+
+        return $types;
+    }
+
+    /**
+     * Platform yang mendukung "bagikan link" murni (URL + kartu preview,
+     * tanpa foto/video) lewat Buffer. Instagram & TikTok wajib media,
+     * jadi tidak masuk di sini.
+     */
+    public function supportsLinkPost(): bool
+    {
+        return in_array($this, [self::Facebook, self::Linkedin, self::Twitter, self::Threads], true);
     }
 
     public function defaultPostType(): PostType
@@ -71,6 +87,19 @@ enum Platform: string
     public function requiresMedia(): bool
     {
         return in_array($this, [self::Instagram, self::Tiktok], true);
+    }
+
+    /** Batas karakter caption platform ini, kalau ada (perkiraan — cek dokumentasi resmi sebelum mengandalkannya). */
+    public function captionLimit(): ?int
+    {
+        return match ($this) {
+            self::Twitter => 280,
+            self::Threads => 500,
+            self::Instagram => 2200,
+            self::Tiktok => 2200,
+            self::Linkedin => 3000,
+            self::Facebook => null,
+        };
     }
 
     /** @return array<int, string> */

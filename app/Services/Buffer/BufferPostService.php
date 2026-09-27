@@ -38,7 +38,7 @@ class BufferPostService
 
     /**
      * @param  iterable<SocialChannel>  $channels
-     * @param  array{now?: bool, scheduled_at?: \DateTimeInterface|string|null, media?: iterable<Media>, post_types?: array<int, string>}  $options  `post_types` maps SocialChannel id → post/reel/story
+     * @param  array{now?: bool, scheduled_at?: \DateTimeInterface|string|null, media?: iterable<Media>, post_types?: array<int, string>, link?: array{url: string, title?: string, description?: string}|null}  $options  `post_types` maps SocialChannel id → post/reel/story/link
      * @return array{postIds: array<int, string>, errors: array<int, string>}
      *
      * @throws BufferException
@@ -93,16 +93,25 @@ class BufferPostService
             }
 
             $postType = $options['post_types'][$channel->id] ?? PostType::Post->value;
+            $isLink = $postType === PostType::Link->value;
+            $link = $options['link'] ?? null;
 
             $input = array_filter([
-                // Stories carry no caption on Instagram/Facebook.
-                'text' => $postType === PostType::Story->value ? null : $text,
+                // Stories carry no caption on Instagram/Facebook. Link posts need the
+                // URL inside the text too — Twitter has no linkAttachment metadata,
+                // it only unfurls a link that's actually in the tweet body.
+                'text' => match (true) {
+                    $postType === PostType::Story->value => null,
+                    $isLink => $this->composeLinkText($text, $link['url'] ?? null),
+                    default => $text,
+                },
                 'channelId' => $channel->buffer_profile_id,
                 'schedulingType' => 'automatic',
                 'mode' => $mode,
                 'dueAt' => $dueAt,
-                'assets' => $assets,
-                'metadata' => $this->buildMetadata($channel, $postType),
+                // linkAttachment is mutually exclusive with a non-empty assets array.
+                'assets' => $isLink ? [] : $assets,
+                'metadata' => $this->buildMetadata($channel, $postType, $link),
             ], static fn ($value) => $value !== null);
 
             try {
@@ -135,10 +144,21 @@ class BufferPostService
      * (and Instagram also requires `shouldShareToFeed`); other networks
      * need no metadata for a plain post.
      *
+     * @param  array{url: string, title?: string, description?: string}|null  $link
      * @return array<string, array<string, mixed>>|null
      */
-    private function buildMetadata(SocialChannel $channel, string $postType): ?array
+    private function buildMetadata(SocialChannel $channel, string $postType, ?array $link): ?array
     {
+        if ($postType === PostType::Link->value) {
+            // Twitter has no linkAttachment field — the URL in the text is enough for it to unfurl.
+            return match ($channel->service) {
+                'facebook' => ['facebook' => ['type' => PostType::Post->value, 'linkAttachment' => $link]],
+                'linkedin' => ['linkedin' => ['linkAttachment' => $link]],
+                'threads' => ['threads' => ['linkAttachment' => $link]],
+                default => null,
+            };
+        }
+
         return match ($channel->service) {
             'instagram' => ['instagram' => [
                 'type' => $postType,
@@ -147,6 +167,21 @@ class BufferPostService
             'facebook' => ['facebook' => ['type' => $postType]],
             default => null,
         };
+    }
+
+    private function composeLinkText(string $text, ?string $url): string
+    {
+        if (! $url) {
+            return $text;
+        }
+
+        $text = trim($text);
+
+        if ($text === '') {
+            return $url;
+        }
+
+        return str_contains($text, $url) ? $text : "{$text}\n\n{$url}";
     }
 
     /**

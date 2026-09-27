@@ -78,6 +78,7 @@ new #[Layout('components.admin-layout', ['title' => 'Dashboard', 'subtitle' => '
         <div class="quick-actions">
             @can('content.create')
                 <a class="btn btn-primary btn-sm" href="{{ route('konten.create') }}" wire:navigate><i class="fa-solid fa-plus"></i> Konten Baru</a>
+                <a class="btn btn-sm" href="{{ route('konten.create-link') }}" wire:navigate><i class="fa-solid fa-link"></i> Posting Link</a>
             @endcan
             @can('calendar.view')
                 <a class="btn btn-sm" href="{{ route('calendar') }}" wire:navigate><i class="fa-solid fa-calendar-days"></i> Kalender Konten</a>

@@ -137,6 +137,11 @@ class ContentPublishService
                 'now' => true,
                 'media' => $content->media,
                 'post_types' => $resolved['postTypes'],
+                'link' => $content->link_url ? array_filter([
+                    'url' => $content->link_url,
+                    'title' => $content->link_title ?: $content->title,
+                    'description' => $content->link_description,
+                ]) : null,
             ]);
 
             $content->update([

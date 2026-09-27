@@ -157,7 +157,7 @@ new #[Layout('components.admin-layout', ['title' => 'Detail Konten', 'subtitle' 
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
             @if ($content->status->isEditable())
                 @can('content.edit')
-                    <a class="btn btn-sm" href="{{ route('konten.edit', $content) }}" wire:navigate><i class="fa-solid fa-pen"></i> Ubah</a>
+                    <a class="btn btn-sm" href="{{ route($content->isLinkPost() ? 'konten.edit-link' : 'konten.edit', $content) }}" wire:navigate><i class="fa-solid fa-pen"></i> Ubah</a>
                 @endcan
                 @can('content.submit')
                     @if ($content->status->canSubmit())
@@ -342,6 +342,17 @@ new #[Layout('components.admin-layout', ['title' => 'Detail Konten', 'subtitle' 
                         @endif
                     </div>
                 @endforeach
+            </div>
+        @endif
+
+        @if ($content->isLinkPost())
+            <div class="link-card-preview" style="margin-bottom:12px;">
+                <div class="link-card-domain"><i class="fa-solid fa-globe"></i> {{ parse_url($content->link_url, PHP_URL_HOST) ?: $content->link_url }}</div>
+                <strong class="link-card-title">{{ $content->link_title ?: $content->title }}</strong>
+                @if ($content->link_description)
+                    <div class="link-card-desc">{{ $content->link_description }}</div>
+                @endif
+                <a class="auth-link" href="{{ $content->link_url }}" target="_blank" rel="noopener" style="font-size:11.5px;">{{ $content->link_url }}</a>
             </div>
         @endif
 

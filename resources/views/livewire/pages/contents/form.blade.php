@@ -54,6 +54,22 @@ new #[Layout('components.admin-layout', ['title' => 'Form Konten', 'subtitle' =>
         }
     }
 
+    /**
+     * Jenis postingan yang $user boleh pakai di $platform LEWAT FORM INI —
+     * "Bagikan Link" sengaja dikecualikan karena punya form khusus sendiri
+     * (Form Posting Link) yang menangani field link_url/link_title/dst;
+     * form konten biasa ini tidak punya field itu sama sekali.
+     *
+     * @return array<int, PostType>
+     */
+    public function selectablePostTypes(Platform $platform): array
+    {
+        return array_values(array_filter(
+            auth()->user()->allowedPostTypes($platform),
+            fn (PostType $t) => $t !== PostType::Link,
+        ));
+    }
+
     public function updatedPlatforms(): void
     {
         $next = [];
@@ -62,7 +78,7 @@ new #[Layout('components.admin-layout', ['title' => 'Form Konten', 'subtitle' =>
             $platform = Platform::tryFrom($value);
 
             if ($platform) {
-                $allowedTypes = array_map(fn (PostType $t) => $t->value, auth()->user()->allowedPostTypes($platform));
+                $allowedTypes = array_map(fn (PostType $t) => $t->value, $this->selectablePostTypes($platform));
                 $current = $this->postTypes[$value] ?? null;
                 $next[$value] = in_array($current, $allowedTypes, true) ? $current : ($allowedTypes[0] ?? $platform->defaultPostType()->value);
             }
@@ -138,8 +154,8 @@ new #[Layout('components.admin-layout', ['title' => 'Form Konten', 'subtitle' =>
             $type = PostType::tryFrom($this->postTypes[$value] ?? '') ?? $platform->defaultPostType();
             $label = $platform->label().' ('.$type->label($platform).')';
 
-            if (! in_array($type, $platform->postTypes(), true)) {
-                $problems[] = "{$label}: jenis postingan tidak tersedia untuk platform ini.";
+            if (! in_array($type, $this->selectablePostTypes($platform), true)) {
+                $problems[] = "{$label}: jenis postingan tidak tersedia — untuk link, pakai Form Posting Link.";
 
                 continue;
             }
@@ -299,7 +315,32 @@ new #[Layout('components.admin-layout', ['title' => 'Form Konten', 'subtitle' =>
 
         <div class="form-step">
             <div class="form-step-title">Caption</div>
-            <textarea class="input" rows="5" wire:model.blur="caption" placeholder="Tulis caption…"></textarea>
+            @php($capLimit = collect($platforms)->map(fn ($p) => Platform::tryFrom($p)?->captionLimit())->filter()->sort()->first())
+            @php($capLimitLabel = $capLimit ? Platform::tryLabel(collect($platforms)->first(fn ($p) => Platform::tryFrom($p)?->captionLimit() === $capLimit)) : null)
+            <div class="caption-editor" x-data="captionEditor({{ $capLimit ?? 'null' }}, @js($capLimitLabel))">
+                <div class="caption-toolbar">
+                    <button type="button" class="cap-btn" @click="applyStyle('bold')" title="Bold — pilih teks dulu"><i class="fa-solid fa-bold"></i></button>
+                    <button type="button" class="cap-btn" @click="applyStyle('italic')" title="Italic — pilih teks dulu"><i class="fa-solid fa-italic"></i></button>
+                    <div class="cap-emoji-wrap" @click.outside="emojiOpen = false">
+                        <button type="button" class="cap-btn" @click="emojiOpen = !emojiOpen" title="Sisipkan emoji"><i class="fa-regular fa-face-smile"></i></button>
+                        <div class="cap-emoji-panel" x-show="emojiOpen" x-cloak style="display:none;">
+                            <template x-for="group in emojiGroups" :key="group.label">
+                                <div>
+                                    <div class="cap-emoji-group-label" x-text="group.label"></div>
+                                    <div class="cap-emoji-grid">
+                                        <template x-for="e in group.items" :key="e">
+                                            <button type="button" @click="insertEmoji(e)" x-text="e"></button>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                    <span class="cap-counter" :class="{ over: overLimit }" x-text="counterLabel"></span>
+                </div>
+                <textarea x-ref="captionInput" class="input" rows="5" wire:model.blur="caption" placeholder="Tulis caption…"></textarea>
+            </div>
+            <p class="field-hint">Bold/Italic tampil sebagai karakter bergaya di semua platform (bukan HTML) — pilih teks lalu klik tombolnya.</p>
         </div>
 
         <div class="form-step">
@@ -307,7 +348,7 @@ new #[Layout('components.admin-layout', ['title' => 'Form Konten', 'subtitle' =>
             <div class="platform-list">
                 @foreach ($allPlatforms as $platform)
                     @php($checked = in_array($platform->value, $platforms, true))
-                    @php($options = auth()->user()->allowedPostTypes($platform))
+                    @php($options = $this->selectablePostTypes($platform))
                     @php($chosen = \App\Enums\PostType::tryFrom($postTypes[$platform->value] ?? '') ?? $platform->defaultPostType())
                     @php($allowed = in_array($platform->value, $postable, true))
                     <div class="platform-option {{ $checked ? 'active' : '' }}" @unless ($allowed) style="opacity:.55;" @endunless>

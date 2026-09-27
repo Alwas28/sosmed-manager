@@ -1,3 +1,5 @@
+import './caption-editor';
+
 /* =========================================================
    SIM_Sosmed — admin shell interactions
    Theme (dark/light) + accent color are persisted in

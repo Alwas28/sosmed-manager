@@ -109,6 +109,9 @@ new #[Layout('components.admin-layout', ['title' => 'Konten', 'subtitle' => 'Kel
             <a class="btn btn-primary btn-sm" href="{{ route('konten.create') }}" wire:navigate>
                 <i class="fa-solid fa-plus"></i> Konten Baru
             </a>
+            <a class="btn btn-sm" href="{{ route('konten.create-link') }}" wire:navigate>
+                <i class="fa-solid fa-link"></i> Posting Link
+            </a>
         @endcan
     </div>
 
@@ -163,7 +166,7 @@ new #[Layout('components.admin-layout', ['title' => 'Konten', 'subtitle' => 'Kel
                             <a class="btn btn-sm" href="{{ route('konten.show', $content) }}" wire:navigate><i class="fa-solid fa-eye"></i> Lihat</a>
                             @if ($content->status->isEditable())
                                 @can('content.edit')
-                                    <a class="btn btn-sm" href="{{ route('konten.edit', $content) }}" wire:navigate><i class="fa-solid fa-pen"></i> Ubah</a>
+                                    <a class="btn btn-sm" href="{{ route($content->isLinkPost() ? 'konten.edit-link' : 'konten.edit', $content) }}" wire:navigate><i class="fa-solid fa-pen"></i> Ubah</a>
                                 @endcan
                                 @can('content.submit')
                                     @if ($content->status->canSubmit())

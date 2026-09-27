@@ -8,6 +8,7 @@ enum PostType: string
     case Post = 'post';
     case Reel = 'reel';
     case Story = 'story';
+    case Link = 'link';
 
     public function icon(): string
     {
@@ -15,6 +16,7 @@ enum PostType: string
             self::Post => 'fa-regular fa-image',
             self::Reel => 'fa-solid fa-clapperboard',
             self::Story => 'fa-solid fa-circle-notch',
+            self::Link => 'fa-solid fa-link',
         };
     }
 
@@ -29,6 +31,7 @@ enum PostType: string
             },
             self::Reel => 'Reel',
             self::Story => $platform === Platform::Instagram ? 'Instagram Story' : 'Story',
+            self::Link => 'Bagikan Link',
         };
     }
 
@@ -43,11 +46,12 @@ enum PostType: string
             },
             self::Reel => 'Wajib satu video vertikal. Caption tampil di bawah video.',
             self::Story => 'Wajib satu foto/video vertikal (9:16). Caption tidak dikirim, hilang setelah 24 jam.',
+            self::Link => 'Membagikan URL website sebagai kartu link, tanpa foto/video.',
         };
     }
 
     public function needsMedia(): bool
     {
-        return $this !== self::Post;
+        return in_array($this, [self::Reel, self::Story], true);
     }
 }

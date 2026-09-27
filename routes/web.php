@@ -70,7 +70,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Volt::route('konten/gagal', 'pages.contents.index')->name('konten.failed');
     });
     Volt::route('konten/buat', 'pages.contents.form')->middleware('can:content.create')->name('konten.create');
+    Volt::route('konten/buat-link', 'pages.contents.link-form')->middleware('can:content.create')->name('konten.create-link');
     Volt::route('konten/{content}/ubah', 'pages.contents.form')->middleware('can:content.edit')->name('konten.edit');
+    Volt::route('konten/{content}/ubah-link', 'pages.contents.link-form')->middleware('can:content.edit')->name('konten.edit-link');
     Volt::route('konten/{content}', 'pages.contents.show')->middleware('can:content.view')->name('konten.show');
 
     // Modul Media
