@@ -7,7 +7,11 @@ use App\Enums\PostType;
 use App\Models\ActivityLog;
 use App\Models\Content;
 use App\Models\Media;
+use App\Services\Image\PostTemplateCompositor;
+use App\Services\Image\TemplateException;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Livewire\Attributes\Layout;
 use Livewire\Volt\Component;
@@ -35,6 +39,14 @@ new #[Layout('components.admin-layout', ['title' => 'Form Konten', 'subtitle' =>
     public array $mediaIds = [];
 
     public array $uploads = [];
+
+    /** Instagram (and Buffer in general) caps a carousel at 10 items. */
+    public const int MAX_SLIDES = 10;
+
+    public bool $showSlideModal = false;
+
+    /** @var array<int, array{upload: mixed, headline: string}> satu slide = satu foto + narasinya sendiri; captionnya tetap cuma satu untuk seluruh postingan. */
+    public array $slides = [];
 
     public function mount(?Content $content = null): void
     {
@@ -124,6 +136,80 @@ new #[Layout('components.admin-layout', ['title' => 'Form Konten', 'subtitle' =>
         }
     }
 
+    public function openSlideModal(): void
+    {
+        Gate::authorize('media.upload');
+        $this->slides = [['upload' => null, 'headline' => '']];
+        $this->resetErrorBag();
+        $this->showSlideModal = true;
+    }
+
+    public function addSlideRow(): void
+    {
+        if (count($this->slides) < self::MAX_SLIDES) {
+            $this->slides[] = ['upload' => null, 'headline' => ''];
+        }
+    }
+
+    public function removeSlideRow(int $index): void
+    {
+        unset($this->slides[$index]);
+        $this->slides = array_values($this->slides);
+    }
+
+    /**
+     * Compose each slide (foto + narasinya sendiri) lewat template deterministik
+     * yang sama dipakai Pengaturan → Template Postingan (banner/logo overlay,
+     * tanpa AI), lalu tambahkan semuanya sebagai media konten ini secara
+     * berurutan — satu konten tetap satu caption, cuma fotonya yang jadi
+     * beberapa slide carousel.
+     */
+    public function generateSlides(PostTemplateCompositor $compositor): void
+    {
+        Gate::authorize('media.upload');
+
+        $this->validate([
+            'slides' => ['required', 'array', 'min:1', 'max:'.self::MAX_SLIDES],
+            'slides.*.upload' => ['required', 'image', 'max:20480'],
+            'slides.*.headline' => ['required', 'string', 'max:200'],
+        ], attributes: ['slides.*.upload' => 'foto slide', 'slides.*.headline' => 'narasi slide']);
+
+        if (count($this->mediaIds) + count($this->slides) > self::MAX_SLIDES) {
+            $this->addError('slides', 'Maksimal '.self::MAX_SLIDES.' foto per konten (termasuk yang sudah dipakai) — batas carousel Instagram.');
+
+            return;
+        }
+
+        try {
+            foreach ($this->slides as $slide) {
+                $bytes = file_get_contents($slide['upload']->getRealPath());
+                $result = $compositor->compose($bytes, $slide['headline'], 'Foto');
+
+                $path = 'media/'.now()->format('Y/m').'/'.Str::random(32).'.jpg';
+                Storage::disk('public')->put($path, $result['bytes']);
+
+                $media = Media::create([
+                    'disk' => 'public',
+                    'path' => $path,
+                    'original_name' => 'Slide — '.$slide['headline'],
+                    'mime_type' => $result['mime'],
+                    'type' => 'image',
+                    'source' => 'template',
+                    'size' => strlen($result['bytes']),
+                    'uploaded_by' => auth()->id(),
+                ]);
+
+                $this->mediaIds[] = $media->id;
+                ActivityLog::record('media_uploaded', $media->original_name, $media);
+            }
+
+            $this->showSlideModal = false;
+            $this->slides = [];
+        } catch (TemplateException $e) {
+            $this->addError('slides', $e->getMessage());
+        }
+    }
+
     protected function rules(): array
     {
         return [
@@ -178,6 +264,10 @@ new #[Layout('components.admin-layout', ['title' => 'Form Konten', 'subtitle' =>
 
             if ($type->needsMedia() && $media->count() > 1) {
                 $problems[] = "{$label}: hanya boleh satu media (sekarang {$media->count()}).";
+            }
+
+            if ($platform === Platform::Instagram && $type === PostType::Post && $media->count() > self::MAX_SLIDES) {
+                $problems[] = "{$label}: maksimal ".self::MAX_SLIDES." foto per carousel (sekarang {$media->count()}).";
             }
         }
 
@@ -275,6 +365,52 @@ new #[Layout('components.admin-layout', ['title' => 'Form Konten', 'subtitle' =>
         <div class="flash flash-error"><strong>Catatan revisi dari reviewer:</strong> {{ $revNote }}</div>
     @endif
 
+    @if ($showSlideModal)
+        <div class="modal-overlay" wire:click.self="$set('showSlideModal', false)">
+            <div class="modal" style="max-width:560px;">
+                <div class="modal-head">
+                    <h3><i class="fa-solid fa-images"></i> Buat Slide dari Template</h3>
+                    <button type="button" class="modal-x" wire:click="$set('showSlideModal', false)">&times;</button>
+                </div>
+                <p class="field-hint" style="margin-bottom:12px;">
+                    Setiap slide = satu foto + narasinya sendiri (dibakar ke gambar pakai Template Postingan, bukan AI).
+                    Captionnya tetap cuma satu untuk seluruh postingan — diisi terpisah di bawah nanti.
+                </p>
+
+                @foreach ($slides as $i => $slide)
+                    <div class="field" wire:key="slide-row-{{ $i }}" style="border:1px solid var(--border);border-radius:10px;padding:12px;margin-bottom:10px;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                            <label class="field-label" style="margin:0;">Slide {{ $i + 1 }}</label>
+                            @if (count($slides) > 1)
+                                <button type="button" class="btn btn-sm btn-ghost" wire:click="removeSlideRow({{ $i }})"><i class="fa-solid fa-trash"></i></button>
+                            @endif
+                        </div>
+                        <input type="file" wire:model="slides.{{ $i }}.upload" accept="image/*" class="input" style="padding:7px;margin-bottom:8px;">
+                        <div wire:loading wire:target="slides.{{ $i }}.upload" class="field-hint">Mengunggah…</div>
+                        @error("slides.{$i}.upload")<div class="field-error">{{ $message }}</div>@enderror
+                        <textarea class="input" rows="2" wire:model.blur="slides.{{ $i }}.headline" placeholder="Narasi/judul untuk slide ini…"></textarea>
+                        @error("slides.{$i}.headline")<div class="field-error">{{ $message }}</div>@enderror
+                    </div>
+                @endforeach
+
+                @error('slides')<div class="field-error" style="margin-bottom:8px;">{{ $message }}</div>@enderror
+
+                <button type="button" class="btn btn-sm" wire:click="addSlideRow" @disabled(count($slides) >= self::MAX_SLIDES)>
+                    <i class="fa-solid fa-plus"></i> Tambah Slide ({{ count($slides) }}/{{ self::MAX_SLIDES }})
+                </button>
+
+                <div class="modal-foot">
+                    <button type="button" class="btn btn-primary btn-sm" wire:click="generateSlides" wire:loading.attr="disabled" wire:target="generateSlides">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i>
+                        <span wire:loading.remove wire:target="generateSlides">Generate {{ count($slides) }} Slide</span>
+                        <span wire:loading wire:target="generateSlides">Membuat slide…</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-ghost" wire:click="$set('showSlideModal', false)"><i class="fa-solid fa-xmark"></i> Batal</button>
+                </div>
+            </div>
+        </div>
+    @endif
+
     <div class="form-steps">
         <div class="form-step">
             <div class="form-step-title">Kategori Konten</div>
@@ -294,17 +430,28 @@ new #[Layout('components.admin-layout', ['title' => 'Form Konten', 'subtitle' =>
             <div class="form-step-title">Media (foto / video)</div>
             <input type="file" wire:model="uploads" multiple accept="image/*,video/*" class="input" style="padding:7px;">
             <div wire:loading wire:target="uploads" class="field-hint">Mengunggah…</div>
-            <p class="field-hint">Maks 20 MB per berkas. Story &amp; Reel butuh tepat satu media.</p>
+            <p class="field-hint">Maks 20 MB per berkas. Story &amp; Reel butuh tepat satu media. Instagram carousel maks {{ self::MAX_SLIDES }} foto.</p>
+
+            @can('media.upload')
+                <div class="ai-bar">
+                    <button type="button" class="ai-btn" wire:click="openSlideModal">
+                        <i class="fa-solid fa-images"></i> Buat Slide dari Template
+                    </button>
+                </div>
+            @endcan
 
             @if ($selected->isNotEmpty())
-                <p class="field-label" style="margin-top:12px;">Dipakai di konten ini ({{ $selected->count() }})</p>
+                <p class="field-label" style="margin-top:12px;">Dipakai di konten ini ({{ $selected->count() }}) — urutan = urutan slide</p>
                 <div class="media-grid" style="margin-bottom:14px;">
-                    @foreach ($selected as $m)
+                    @foreach ($selected as $i => $m)
                         <div class="media-tile">
                             @if ($m->isVideo())
                                 <video class="media-thumb" src="{{ $m->url() }}" muted></video><span class="media-badge">VIDEO</span>
                             @else
                                 <img class="media-thumb" src="{{ $m->url() }}" alt="">
+                                @if ($selected->count() > 1)
+                                    <span class="media-badge">{{ $i + 1 }}</span>
+                                @endif
                             @endif
                             <button type="button" class="media-x" wire:click="toggleMedia({{ $m->id }})" title="Lepas">&times;</button>
                         </div>
