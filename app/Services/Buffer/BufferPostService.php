@@ -102,7 +102,7 @@ class BufferPostService
                 // it only unfurls a link that's actually in the tweet body.
                 'text' => match (true) {
                     $postType === PostType::Story->value => null,
-                    $isLink => $this->composeLinkText($text, $link['url'] ?? null),
+                    $isLink => PostType::composeLinkText($text, $link['url'] ?? null),
                     default => $text,
                 },
                 'channelId' => $channel->buffer_profile_id,
@@ -167,21 +167,6 @@ class BufferPostService
             'facebook' => ['facebook' => ['type' => $postType]],
             default => null,
         };
-    }
-
-    private function composeLinkText(string $text, ?string $url): string
-    {
-        if (! $url) {
-            return $text;
-        }
-
-        $text = trim($text);
-
-        if ($text === '') {
-            return $url;
-        }
-
-        return str_contains($text, $url) ? $text : "{$text}\n\n{$url}";
     }
 
     /**

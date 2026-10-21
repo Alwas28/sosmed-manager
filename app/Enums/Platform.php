@@ -57,7 +57,7 @@ enum Platform: string
      */
     public function supportsLinkPost(): bool
     {
-        return in_array($this, [self::Facebook, self::Linkedin, self::Twitter, self::Threads], true);
+        return in_array($this, [self::Facebook, self::Twitter, self::Threads], true);
     }
 
     public function defaultPostType(): PostType
@@ -96,9 +96,9 @@ enum Platform: string
             self::Twitter => 280,
             self::Threads => 500,
             self::Instagram => 2200,
-            self::Tiktok => 2200,
+            self::Tiktok => 4000,
             self::Linkedin => 3000,
-            self::Facebook => null,
+            self::Facebook => 64000,
         };
     }
 

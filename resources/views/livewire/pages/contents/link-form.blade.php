@@ -77,6 +77,28 @@ new #[Layout('components.admin-layout', ['title' => 'Posting Link', 'subtitle' =
         ];
     }
 
+    /**
+     * Threads counts the link itself against its 500-character cap (unlike
+     * Twitter, which shortens every link to a fixed ~23 chars via t.co) —
+     * so this checks the actual composed text (caption + URL), not just
+     * the caption field alone.
+     */
+    protected function threadsLengthProblem(): ?string
+    {
+        if (! in_array('threads', $this->platforms, true)) {
+            return null;
+        }
+
+        $composed = PostType::composeLinkText($this->caption, $this->linkUrl);
+        $length = mb_strlen($composed);
+
+        if ($length <= 500) {
+            return null;
+        }
+
+        return "Threads membatasi 500 karakter termasuk link — teks + link sekarang {$length} karakter. Persingkat caption-nya.";
+    }
+
     public function save(bool $submit = false): void
     {
         $editing = (bool) $this->content?->exists;
@@ -87,6 +109,12 @@ new #[Layout('components.admin-layout', ['title' => 'Posting Link', 'subtitle' =
         }
 
         $data = $this->validate();
+
+        if ($problem = $this->threadsLengthProblem()) {
+            $this->addError('caption', $problem);
+
+            return;
+        }
 
         $content = $this->content ?? new Content([
             'created_by' => auth()->id(),
@@ -196,9 +224,49 @@ new #[Layout('components.admin-layout', ['title' => 'Posting Link', 'subtitle' =
 
         <div class="form-step">
             <div class="form-step-title">Teks Pengantar (opsional)</div>
-            <textarea class="input" rows="4" wire:model.blur="caption" placeholder="Teks yang menyertai link, mis. ajakan atau ringkasan…"></textarea>
+            @php($onThreads = in_array('threads', $platforms, true))
+            <div class="caption-editor" x-data="captionEditor({{ $onThreads ? 500 : 'null' }}, @js($onThreads ? 'Threads, termasuk link' : null), @js($linkUrl))">
+                <div class="caption-toolbar">
+                    <button type="button" class="cap-btn" @click="applyStyle('bold')" title="Bold — pilih teks dulu"><i class="fa-solid fa-bold"></i></button>
+                    <button type="button" class="cap-btn" @click="applyStyle('italic')" title="Italic — pilih teks dulu"><i class="fa-solid fa-italic"></i></button>
+                    <div class="cap-emoji-wrap" @click.outside="emojiOpen = false">
+                        <button type="button" class="cap-btn" @click="emojiOpen = !emojiOpen" title="Sisipkan emoji"><i class="fa-regular fa-face-smile"></i></button>
+                        <div class="cap-emoji-panel" x-show="emojiOpen" x-cloak style="display:none;">
+                            <template x-for="group in emojiGroups" :key="group.label">
+                                <div>
+                                    <div class="cap-emoji-group-label" x-text="group.label"></div>
+                                    <div class="cap-emoji-grid">
+                                        <template x-for="e in group.items" :key="e">
+                                            <button type="button" @click="insertEmoji(e)" x-text="e"></button>
+                                        </template>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                    <div class="cap-emoji-wrap" @click.outside="closingOpen = false">
+                        <button type="button" class="cap-btn" @click="closingOpen = !closingOpen" title="Sisipkan kalimat penutup"><i class="fa-solid fa-signature"></i></button>
+                        <div class="cap-emoji-panel" x-show="closingOpen" x-cloak style="display:none;width:300px;">
+                            <div class="cap-emoji-group-label" style="margin-top:0;">Kalimat Penutup</div>
+                            <button type="button" class="closing-option" @click="insertText('Baca berita selengkapnya di kendariinfo.com atau klik link di bio.'); closingOpen = false">
+                                Baca berita <strong>selengkapnya</strong> di kendariinfo.com atau klik link di bio.
+                            </button>
+                            <button type="button" class="closing-option" @click="insertText('Baca berita lainnya di kendariinfo.com atau klik link di bio.'); closingOpen = false">
+                                Baca berita <strong>lainnya</strong> di kendariinfo.com atau klik link di bio.
+                            </button>
+                        </div>
+                    </div>
+                    <span class="cap-counter" :class="{ over: overLimit }" x-text="counterLabel"></span>
+                </div>
+                <textarea x-ref="captionInput" class="input" rows="4" wire:model.blur="caption" placeholder="Teks yang menyertai link, mis. ajakan atau ringkasan…"></textarea>
+            </div>
             @error('caption')<div class="field-error">{{ $message }}</div>@enderror
-            <p class="field-hint">Link di atas otomatis disertakan di teks postingan kalau belum ada.</p>
+            <p class="field-hint">
+                Link di atas otomatis disertakan di teks postingan kalau belum ada.
+                @if ($onThreads)
+                    Threads membatasi total 500 karakter <strong>termasuk link</strong> — platform lain tidak seketat ini.
+                @endif
+            </p>
         </div>
 
         <div class="form-step">
@@ -207,7 +275,7 @@ new #[Layout('components.admin-layout', ['title' => 'Posting Link', 'subtitle' =
                 @foreach ($this->linkablePlatforms() as $platform)
                     @php($allowed = auth()->user()->canPostTo($platform->value, 'link'))
                     <label @unless ($allowed) style="opacity:.55;cursor:not-allowed;" @endunless>
-                        <input type="checkbox" value="{{ $platform->value }}" wire:model="platforms" @disabled(! $allowed && ! in_array($platform->value, $platforms, true))>
+                        <input type="checkbox" value="{{ $platform->value }}" wire:model.live="platforms" @disabled(! $allowed && ! in_array($platform->value, $platforms, true))>
                         <i class="{{ $platform->icon() }}"></i> {{ $platform->label() }}
                         @unless ($allowed)
                             <span class="badge badge-lock"><i class="fa-solid fa-lock"></i></span>

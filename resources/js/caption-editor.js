@@ -73,11 +73,17 @@ const EMOJI_GROUPS = [
 ];
 
 document.addEventListener('alpine:init', () => {
-    window.Alpine.data('captionEditor', (limit = null, limitLabel = null) => ({
+    // `linkUrl`, when given (Form Posting Link), is added to the counted length
+    // — unless it's already inside the caption — because that's the real text
+    // that goes out to Buffer (caption + the link appended), and Threads in
+    // particular counts the link itself against its 500-character cap.
+    window.Alpine.data('captionEditor', (limit = null, limitLabel = null, linkUrl = '') => ({
         limit,
         limitLabel,
+        linkUrl,
         length: 0,
         emojiOpen: false,
+        closingOpen: false,
         emojiGroups: EMOJI_GROUPS,
 
         init() {
@@ -91,25 +97,40 @@ document.addEventListener('alpine:init', () => {
             return Array.from(text).length; // codepoint count — doesn't double-count bold/italic surrogate pairs.
         },
 
+        get totalLength() {
+            if (!this.linkUrl) return this.length;
+
+            const value = this.$refs.captionInput.value;
+            if (value.includes(this.linkUrl)) return this.length;
+
+            const separator = value.trim() === '' ? 0 : 2; // "\n\n" — matches PostType::composeLinkText().
+            return this.length + separator + Array.from(this.linkUrl).length;
+        },
+
         get counterLabel() {
             return this.limit
-                ? `${this.length} / ${this.limit} karakter (${this.limitLabel})`
+                ? `${this.totalLength} / ${this.limit} karakter (${this.limitLabel})`
                 : `${this.length} karakter`;
         },
 
         get overLimit() {
-            return this.limit !== null && this.length > this.limit;
+            return this.limit !== null && this.totalLength > this.limit;
         },
 
-        insertEmoji(emoji) {
+        /** Inserts at the cursor (replacing any selection) — used for both emoji and quick-insert boilerplate text. */
+        insertText(text) {
             const el = this.$refs.captionInput;
             const start = el.selectionStart ?? el.value.length;
             const end = el.selectionEnd ?? el.value.length;
 
-            el.value = el.value.slice(0, start) + emoji + el.value.slice(end);
+            el.value = el.value.slice(0, start) + text + el.value.slice(end);
             el.focus();
-            el.setSelectionRange(start + emoji.length, start + emoji.length);
+            el.setSelectionRange(start + text.length, start + text.length);
             el.dispatchEvent(new Event('input', { bubbles: true }));
+        },
+
+        insertEmoji(emoji) {
+            this.insertText(emoji);
             this.emojiOpen = false;
         },
 

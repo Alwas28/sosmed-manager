@@ -54,4 +54,26 @@ enum PostType: string
     {
         return in_array($this, [self::Reel, self::Story], true);
     }
+
+    /**
+     * The actual text sent to Buffer for a link post: caption + the URL
+     * appended (unless already present). Used both when building the real
+     * Buffer payload (BufferPostService) and when validating length limits
+     * (e.g. Threads' 500-character cap includes the link itself) — single
+     * source of truth so the two never drift apart.
+     */
+    public static function composeLinkText(?string $text, ?string $url): string
+    {
+        if (! $url) {
+            return (string) $text;
+        }
+
+        $text = trim((string) $text);
+
+        if ($text === '') {
+            return $url;
+        }
+
+        return str_contains($text, $url) ? $text : "{$text}\n\n{$url}";
+    }
 }
