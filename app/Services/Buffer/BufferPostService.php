@@ -174,12 +174,21 @@ class BufferPostService
      * one run-on block, even though every word did go through. The common,
      * widely-documented workaround: a blank line gets discarded, but a line
      * holding an invisible character reads as "has content" and survives —
-     * so each blank line between paragraphs gets a U+2800 (Braille Pattern
-     * Blank) instead of being truly empty.
+     * so each blank line between paragraphs gets two U+2800 (Braille Pattern
+     * Blank) lines instead of being truly empty. One invisible line alone
+     * only buys a sliver of a gap (TikTok still renders it as a single thin
+     * line); two gives separation closer to Instagram's full blank-line look.
      */
     private function preserveLineBreaksForTikTok(string $text): string
     {
-        return preg_replace('/\n[ \t]*\n/', "\n\u{2800}\n", $text) ?? $text;
+        // Normalize Windows/old-Mac line endings first — text pasted from Word,
+        // WhatsApp, or Google Docs often carries \r\n rather than a bare \n, which
+        // the blank-line pattern below wouldn't otherwise recognize as a break.
+        $text = str_replace(["\r\n", "\r"], "\n", $text);
+
+        // A "blank" line can still hold a non-breaking space (U+00A0) left over
+        // from a paste, not just plain spaces/tabs — match that too.
+        return preg_replace('/\n[ \t\x{00A0}]*\n/u', "\n\u{2800}\n\u{2800}\n", $text) ?? $text;
     }
 
     private function buildMetadata(SocialChannel $channel, string $postType, ?array $link, ?string $headline = null, bool $hasVideo = false): ?array
@@ -201,7 +210,7 @@ class BufferPostService
             ]],
             'facebook' => ['facebook' => ['type' => $postType]],
             'tiktok' => (! $hasVideo && trim((string) $headline) !== '')
-                ? ['tiktok' => ['title' => Str::limit(trim($headline), 90, '')]]
+                ? ['tiktok' => ['title' => Str::limit(trim($headline), 90, '', preserveWords: true)]]
                 : null,
             default => null,
         };
