@@ -84,6 +84,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     // Log Aktivitas & dashboard kesibukan pengguna
     Volt::route('log-aktivitas', 'pages.logs.index')->middleware('can:log.view')->name('logs');
 
+    // Kinerja Pengguna — siapa produktif & siapa kurang, per role.
+    Volt::route('kinerja-pengguna', 'pages.performance.index')->middleware('can:log.view')->name('performance.index');
+
     // Laporan
     Volt::route('laporan','pages.reports.index')->middleware('can:report.view')->name('reports');
     Route::get('laporan/unduh', [ReportExportController::class, 'export'])->middleware('can:report.export')->name('reports.export');

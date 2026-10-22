@@ -44,6 +44,7 @@ class AdminMenu
             ],
             'Analitik' => [
                 self::item('Laporan', 'fa-chart-line', 'reports', 'laporan', 'report.view'),
+                self::item('Kinerja Pengguna', 'fa-chart-pie', 'performance.index', 'kinerja-pengguna', 'log.view'),
             ],
             'Pengaturan' => [
                 self::item('Pengguna', 'fa-users', 'users.index', 'pengguna', 'user.view'),
