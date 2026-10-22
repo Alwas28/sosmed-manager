@@ -100,15 +100,21 @@ class BufferPostService
             $isLink = $postType === PostType::Link->value;
             $link = $options['link'] ?? null;
 
+            $channelText = match (true) {
+                $postType === PostType::Story->value => null,
+                $isLink => PostType::composeLinkText($text, $link['url'] ?? null),
+                default => $text,
+            };
+
+            if ($channelText !== null && $channel->service === 'tiktok') {
+                $channelText = $this->preserveLineBreaksForTikTok($channelText);
+            }
+
             $input = array_filter([
                 // Stories carry no caption on Instagram/Facebook. Link posts need the
                 // URL inside the text too — Twitter has no linkAttachment metadata,
                 // it only unfurls a link that's actually in the tweet body.
-                'text' => match (true) {
-                    $postType === PostType::Story->value => null,
-                    $isLink => PostType::composeLinkText($text, $link['url'] ?? null),
-                    default => $text,
-                },
+                'text' => $channelText,
                 'channelId' => $channel->buffer_profile_id,
                 'schedulingType' => 'automatic',
                 'mode' => $mode,
@@ -160,6 +166,22 @@ class BufferPostService
      * @param  array{url: string, title?: string, description?: string}|null  $link
      * @return array<string, array<string, mixed>>|null
      */
+    /**
+     * TikTok's own platform drops truly-blank lines from post text (third-party
+     * TikTok API docs confirm this: "TikTok does not currently support line
+     * breaks in the post text. Included line breaks will be ignored.") — a
+     * caption with several paragraphs separated by a blank line comes out as
+     * one run-on block, even though every word did go through. The common,
+     * widely-documented workaround: a blank line gets discarded, but a line
+     * holding an invisible character reads as "has content" and survives —
+     * so each blank line between paragraphs gets a U+2800 (Braille Pattern
+     * Blank) instead of being truly empty.
+     */
+    private function preserveLineBreaksForTikTok(string $text): string
+    {
+        return preg_replace('/\n[ \t]*\n/', "\n\u{2800}\n", $text) ?? $text;
+    }
+
     private function buildMetadata(SocialChannel $channel, string $postType, ?array $link, ?string $headline = null, bool $hasVideo = false): ?array
     {
         if ($postType === PostType::Link->value) {
