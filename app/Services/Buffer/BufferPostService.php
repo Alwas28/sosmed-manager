@@ -7,6 +7,7 @@ use App\Models\BufferConnection;
 use App\Models\Media;
 use App\Models\SocialChannel;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 /**
  * Creates / schedules posts on Buffer (Blueprint §10) via the `createPost`
@@ -38,7 +39,7 @@ class BufferPostService
 
     /**
      * @param  iterable<SocialChannel>  $channels
-     * @param  array{now?: bool, scheduled_at?: \DateTimeInterface|string|null, media?: iterable<Media>, post_types?: array<int, string>, link?: array{url: string, title?: string, description?: string}|null}  $options  `post_types` maps SocialChannel id → post/reel/story/link
+     * @param  array{now?: bool, scheduled_at?: \DateTimeInterface|string|null, media?: iterable<Media>, post_types?: array<int, string>, headline?: ?string, link?: array{url: string, title?: string, description?: string}|null}  $options  `post_types` maps SocialChannel id → post/reel/story/link
      * @return array{postIds: array<int, string>, errors: array<int, string>}
      *
      * @throws BufferException
@@ -71,7 +72,10 @@ class BufferPostService
                 ->toIso8601String();
         }
 
-        $assets = $this->buildAssets($options['media'] ?? []);
+        $media = collect($options['media'] ?? []);
+        $assets = $this->buildAssets($media);
+        $hasVideo = $media->contains(fn (Media $m) => $m->isVideo());
+        $headline = $options['headline'] ?? null;
         $mutation = $this->createPostMutation();
         // Reuse the same refresh-if-needed accessor BufferAuthService's own
         // account()/channels() calls rely on, instead of the possibly-
@@ -111,7 +115,7 @@ class BufferPostService
                 'dueAt' => $dueAt,
                 // linkAttachment is mutually exclusive with a non-empty assets array.
                 'assets' => $isLink ? [] : $assets,
-                'metadata' => $this->buildMetadata($channel, $postType, $link),
+                'metadata' => $this->buildMetadata($channel, $postType, $link, $headline, $hasVideo),
             ], static fn ($value) => $value !== null);
 
             try {
@@ -144,10 +148,19 @@ class BufferPostService
      * (and Instagram also requires `shouldShareToFeed`); other networks
      * need no metadata for a plain post.
      *
+     * TikTok is a separate case: its *photo*-mode posts (no video attached)
+     * use TikTok's own `post_info.title` as a short (≤90 char) headline —
+     * distinct from the main caption/description, which is what the
+     * top-level `text` input carries. Without it, a TikTok photo/slide post
+     * can go out with no visible caption even though `text` was set
+     * correctly — this mirrors our own "Judul Konten" field, so that's what
+     * fills it. Video posts don't use this field (TikTok's docs mark it
+     * "for photo posts"), so it's only sent when there's no video.
+     *
      * @param  array{url: string, title?: string, description?: string}|null  $link
      * @return array<string, array<string, mixed>>|null
      */
-    private function buildMetadata(SocialChannel $channel, string $postType, ?array $link): ?array
+    private function buildMetadata(SocialChannel $channel, string $postType, ?array $link, ?string $headline = null, bool $hasVideo = false): ?array
     {
         if ($postType === PostType::Link->value) {
             // Twitter has no linkAttachment field — the URL in the text is enough for it to unfurl.
@@ -165,6 +178,9 @@ class BufferPostService
                 'shouldShareToFeed' => $postType !== PostType::Story->value,
             ]],
             'facebook' => ['facebook' => ['type' => $postType]],
+            'tiktok' => (! $hasVideo && trim((string) $headline) !== '')
+                ? ['tiktok' => ['title' => Str::limit(trim($headline), 90, '')]]
+                : null,
             default => null,
         };
     }

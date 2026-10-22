@@ -42,6 +42,15 @@ new #[Layout('components.admin-layout', ['title' => 'Akses Kontrol', 'subtitle' 
         $this->loadSelected();
     }
 
+    public function togglePermission(int $id): void
+    {
+        Gate::authorize('access.manage');
+
+        $this->selected = in_array($id, $this->selected, true)
+            ? array_values(array_diff($this->selected, [$id]))
+            : [...$this->selected, $id];
+    }
+
     public function toggleGroup(string $group): void
     {
         $ids = Permission::where('group', $group)->pluck('id')->all();
@@ -126,25 +135,26 @@ new #[Layout('components.admin-layout', ['title' => 'Akses Kontrol', 'subtitle' 
         </div>
 
         @foreach ($groups as $group => $perms)
+            @php($groupOn = $perms->pluck('id')->diff($selected)->isEmpty())
             <div class="perm-group">
                 <div class="perm-group-head">
                     <span>{{ $group }}</span>
                     @can('access.manage')
-                        <button class="btn btn-sm btn-ghost" type="button" wire:click="toggleGroup(@js($group))">
-                            <i class="fa-solid fa-list-check"></i> Pilih / hapus semua
+                        <button type="button" class="switch {{ $groupOn ? 'on' : '' }}" wire:click="toggleGroup(@js($group))" title="Pilih / hapus semua di {{ $group }}">
+                            <span class="switch-track"></span>
                         </button>
                     @endcan
                 </div>
                 <div class="perm-list">
                     @foreach ($perms as $perm)
-                        <label class="perm-item">
-                            <input type="checkbox" value="{{ $perm->id }}" wire:model="selected"
-                                   @cannot('access.manage') disabled @endcannot>
-                            <span>
+                        @php($isOn = in_array($perm->id, $selected, true))
+                        <button type="button" class="perm-item" wire:click="togglePermission({{ $perm->id }})" @cannot('access.manage') disabled @endcannot>
+                            <span class="perm-text">
                                 <span class="p-name">{{ $perm->name }}</span><br>
                                 <span class="p-desc">{{ $perm->slug }}</span>
                             </span>
-                        </label>
+                            <span class="switch {{ $isOn ? 'on' : '' }}"><span class="switch-track"></span></span>
+                        </button>
                     @endforeach
                 </div>
             </div>
