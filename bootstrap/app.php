@@ -5,6 +5,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Session\Middleware\StartSession;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -14,6 +15,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // API memakai sesi web Laravel yang sama dengan Livewire, sehingga
+        // cookie sesi harus tersedia di route /api/* (login, me, logout).
+        $middleware->api(append: [StartSession::class]);
+
         $middleware->alias(['api.key' => EnsureApiKey::class]);
         $middleware->validateCsrfTokens(except: ['api/*']);
         $middleware->redirectGuestsTo(
