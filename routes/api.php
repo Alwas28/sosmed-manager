@@ -6,6 +6,8 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ContentController;
 use App\Http\Controllers\Api\ReferenceController;
 use App\Http\Controllers\Api\ReportController;
+use App\Http\Controllers\Api\RolesController;
+use App\Http\Controllers\Api\UsersController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -77,6 +79,29 @@ Route::middleware('api.key')->group(function () {
         Route::get('/reports/users', [ReportController::class, 'users'])
             ->middleware('can:report.view')
             ->name('api.reports.users');
+
+        Route::get('/users', [UsersController::class, 'index'])
+            ->middleware('can:user.view')
+            ->name('api.users.index');
+        Route::put('/users/{user}/role', [UsersController::class, 'updateRole'])
+            ->middleware('can:user.manage')
+            ->name('api.users.role.update');
+        Route::put('/users/{user}/platforms', [UsersController::class, 'updatePlatforms'])
+            ->middleware('can:user.platform')
+            ->name('api.users.platforms.update');
+
+        Route::get('/roles', [RolesController::class, 'index'])
+            ->middleware('can:role.view')
+            ->name('api.roles.index');
+        Route::post('/roles', [RolesController::class, 'store'])
+            ->middleware('can:role.manage')
+            ->name('api.roles.store');
+        Route::put('/roles/{role}', [RolesController::class, 'update'])
+            ->middleware('can:role.manage')
+            ->name('api.roles.update');
+        Route::delete('/roles/{role}', [RolesController::class, 'destroy'])
+            ->middleware('can:role.manage')
+            ->name('api.roles.destroy');
 
         Route::get('/access-control', [AccessControlController::class, 'index'])
             ->middleware('can:access.manage')

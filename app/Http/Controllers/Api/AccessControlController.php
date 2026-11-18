@@ -24,6 +24,7 @@ class AccessControlController extends ApiController
                 'name' => $role->name,
                 'slug' => $role->slug,
                 'description' => $role->description,
+                'is_locked' => $role->is_locked,
                 'is_administrator' => $role->isAdministrator(),
                 'permissions' => $role->permissions->pluck('slug')->all(),
             ]);
