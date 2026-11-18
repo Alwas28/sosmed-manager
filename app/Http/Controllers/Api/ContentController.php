@@ -6,7 +6,6 @@ use App\Enums\ContentCategory;
 use App\Enums\ContentStatus;
 use App\Enums\Platform;
 use App\Models\Content;
-use App\Models\ContentApproval;
 use App\Models\ContentPlatform;
 use App\Services\Content\ContentApprovalService;
 use App\Services\Content\ContentPublishService;
@@ -46,6 +45,15 @@ class ContentController extends ApiController
 
         if ($request->boolean('mine')) {
             $query->where('created_by', $request->user()->id);
+        }
+
+        if ($request->filled('q')) {
+            $search = trim((string) $request->input('q'));
+            $query->where(function ($builder) use ($search) {
+                $builder->where('title', 'like', '%'.$search.'%')
+                    ->orWhere('caption', 'like', '%'.$search.'%')
+                    ->orWhere('link_title', 'like', '%'.$search.'%');
+            });
         }
 
         if ($request->filled('date_from')) {
@@ -99,6 +107,8 @@ class ContentController extends ApiController
             'platforms.*.platform' => ['required_with:platforms', 'string'],
             'platforms.*.post_type' => ['nullable', 'string', 'max:50'],
             'platforms.*.social_channel_id' => ['nullable', 'integer', 'exists:social_channels,id'],
+            'media_ids' => ['sometimes', 'array'],
+            'media_ids.*' => ['integer', 'exists:media,id'],
         ]);
 
         $category = ContentCategory::tryFrom($data['category']);
@@ -124,6 +134,7 @@ class ContentController extends ApiController
             ]);
 
             $this->syncPlatforms($content, $data['platforms'] ?? []);
+            $this->syncMedia($content, $data['media_ids'] ?? []);
             $content->logActivity('created', null, ContentStatus::Draft->value);
 
             return $content;
@@ -165,6 +176,8 @@ class ContentController extends ApiController
             'platforms.*.platform' => ['required_with:platforms', 'string'],
             'platforms.*.post_type' => ['nullable', 'string', 'max:50'],
             'platforms.*.social_channel_id' => ['nullable', 'integer', 'exists:social_channels,id'],
+            'media_ids' => ['sometimes', 'array'],
+            'media_ids.*' => ['integer', 'exists:media,id'],
         ]);
 
         if (array_key_exists('category', $data)) {
@@ -183,9 +196,10 @@ class ContentController extends ApiController
         }
 
         $submit = (bool) ($data['submit'] ?? false);
-        unset($data['submit'], $data['platforms']);
+        $mediaIds = $data['media_ids'] ?? null;
+        unset($data['submit'], $data['platforms'], $data['media_ids']);
 
-        DB::transaction(function () use ($content, $data, $request, $submit, $editorFinishing) {
+        DB::transaction(function () use ($content, $data, $request, $submit, $editorFinishing, $mediaIds) {
             $from = $content->status->value;
             $content->fill($data);
 
@@ -202,6 +216,10 @@ class ContentController extends ApiController
 
             if (isset($request->platforms)) {
                 $this->syncPlatforms($content, $request->platforms);
+            }
+
+            if ($mediaIds !== null) {
+                $this->syncMedia($content, $mediaIds);
             }
 
             if ($submit) {
@@ -227,6 +245,10 @@ class ContentController extends ApiController
 
     public function destroy(Content $content): JsonResponse
     {
+        if (! $content->status->isEditable()) {
+            return $this->error('Konten dengan status ini tidak dapat dihapus.', 422);
+        }
+
         $content->logActivity('deleted', $content->status->value, null);
         $content->delete();
 
@@ -282,34 +304,18 @@ class ContentController extends ApiController
     public function requestRevision(Request $request, Content $content): JsonResponse
     {
         $data = $request->validate([
-            'note' => ['required', 'string', 'max:1000'],
+            'note' => ['required', 'string', 'min:3', 'max:2000'],
         ]);
 
-        if ($content->status !== ContentStatus::Approved) {
-            return $this->error('Publisher hanya dapat meminta revisi pada konten yang sudah disetujui Editor.', 422);
-        }
-
-        DB::transaction(function () use ($content, $request, $data) {
-            $from = $content->status->value;
-            $content->status = ContentStatus::Revision;
-            $content->approved_by = null;
-            $content->scheduled_at = null;
-            $content->save();
-
-            ContentApproval::create([
-                'content_id' => $content->id,
-                'reviewer_id' => $request->user()->id,
-                'decision' => 'revision',
-                'note' => $data['note'],
-            ]);
-
-            $content->logActivity(
-                'revision_requested',
-                $from,
-                ContentStatus::Revision->value,
+        try {
+            app(ContentApprovalService::class)->requestRevision(
+                $content,
+                $request->user(),
                 $data['note']
             );
-        });
+        } catch (\Throwable $e) {
+            return $this->error($e->getMessage(), 422);
+        }
 
         return $this->success($this->payload($content->refresh()->load([
             'creator:id,name,role_id',
@@ -317,13 +323,13 @@ class ContentController extends ApiController
             'approver:id,name',
             'media',
             'platforms',
-        ])), 'Revisi diminta. Editor akan memperbaikinya.');
+        ])), 'Revisi diminta. Penulis akan memperbaikinya.');
     }
 
     public function schedule(Request $request, Content $content): JsonResponse
     {
         $data = $request->validate([
-            'scheduled_at' => ['required', 'date', 'after:now'],
+            'scheduled_at' => ['required', 'date', 'after_or_equal:now'],
         ]);
 
         try {
@@ -370,6 +376,42 @@ class ContentController extends ApiController
             'media',
             'platforms',
         ])), 'Konten dipublikasikan.');
+    }
+
+    public function withdraw(Content $content): JsonResponse
+    {
+        if ($content->status !== ContentStatus::PendingApproval) {
+            return $this->error('Hanya konten yang menunggu approval yang dapat ditarik kembali.', 422);
+        }
+
+        $from = $content->status->value;
+        $content->update(['status' => ContentStatus::Draft->value]);
+        $content->logActivity('withdrawn', $from, ContentStatus::Draft->value);
+
+        return $this->success($this->payload($content->refresh()->load([
+            'creator:id,name,role_id',
+            'creator.role:id,name,slug',
+            'approver:id,name',
+            'media',
+            'platforms',
+        ])), 'Konten ditarik kembali ke draft.');
+    }
+
+    public function cancelSchedule(Request $request, Content $content): JsonResponse
+    {
+        try {
+            app(ContentPublishService::class)->cancelSchedule($content, $request->user());
+        } catch (\Throwable $e) {
+            return $this->error($e->getMessage(), 422);
+        }
+
+        return $this->success($this->payload($content->refresh()->load([
+            'creator:id,name,role_id',
+            'creator.role:id,name,slug',
+            'approver:id,name',
+            'media',
+            'platforms',
+        ])), 'Jadwal dibatalkan — konten kembali ke status Disetujui.');
     }
 
     public function logs(Content $content): JsonResponse
@@ -461,5 +503,20 @@ class ContentController extends ApiController
         if ($rows !== []) {
             ContentPlatform::insert($rows);
         }
+    }
+
+    /**
+     * @param  array<int, int>  $mediaIds
+     */
+    private function syncMedia(Content $content, array $mediaIds): void
+    {
+        $ids = array_values(array_unique(array_filter($mediaIds, fn ($id) => is_numeric($id))));
+
+        $sync = [];
+        foreach ($ids as $position => $id) {
+            $sync[(int) $id] = ['position' => $position];
+        }
+
+        $content->media()->sync($sync);
     }
 }

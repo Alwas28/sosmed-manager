@@ -4,6 +4,8 @@ use App\Http\Controllers\Api\AccessControlController;
 use App\Http\Controllers\Api\ActivityController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ContentController;
+use App\Http\Controllers\Api\IntegrationController;
+use App\Http\Controllers\Api\MediaController;
 use App\Http\Controllers\Api\ReferenceController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RolesController;
@@ -68,6 +70,41 @@ Route::middleware('api.key')->group(function () {
         Route::post('/contents/{content}/publish', [ContentController::class, 'publish'])
             ->middleware('can:publish.manage')
             ->name('api.contents.publish');
+        Route::post('/contents/{content}/withdraw', [ContentController::class, 'withdraw'])
+            ->middleware('can:content.submit')
+            ->name('api.contents.withdraw');
+        Route::post('/contents/{content}/cancel-schedule', [ContentController::class, 'cancelSchedule'])
+            ->middleware('can:schedule.manage')
+            ->name('api.contents.cancel-schedule');
+
+        Route::get('/media', [MediaController::class, 'index'])
+            ->middleware('can:media.view')
+            ->name('api.media.index');
+        Route::post('/media', [MediaController::class, 'store'])
+            ->middleware('can:media.upload')
+            ->name('api.media.store');
+        Route::delete('/media/{media}', [MediaController::class, 'destroy'])
+            ->middleware('can:media.delete')
+            ->name('api.media.destroy');
+
+        Route::get('/social-accounts', [IntegrationController::class, 'social'])
+            ->middleware('can:social.view')
+            ->name('api.social-accounts.index');
+        Route::get('/buffer/status', [IntegrationController::class, 'bufferStatus'])
+            ->middleware('can:buffer.manage')
+            ->name('api.buffer.status');
+        Route::get('/buffer/connect-url', [IntegrationController::class, 'bufferConnectUrl'])
+            ->middleware('can:buffer.manage')
+            ->name('api.buffer.connect-url');
+        Route::post('/buffer/connect-token', [IntegrationController::class, 'bufferConnectToken'])
+            ->middleware('can:buffer.manage')
+            ->name('api.buffer.connect-token');
+        Route::post('/buffer/sync', [IntegrationController::class, 'bufferSync'])
+            ->middleware('can:buffer.manage')
+            ->name('api.buffer.sync');
+        Route::post('/buffer/disconnect', [IntegrationController::class, 'bufferDisconnect'])
+            ->middleware('can:buffer.manage')
+            ->name('api.buffer.disconnect');
 
         Route::get('/activity-logs', [ActivityController::class, 'index'])
             ->middleware('can:log.view')
