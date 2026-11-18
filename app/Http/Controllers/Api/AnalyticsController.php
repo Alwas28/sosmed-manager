@@ -140,14 +140,18 @@ class AnalyticsController extends ApiController
         Gate::authorize('report.export');
         [$from, $to] = $this->reportRange($request, true);
 
+        $format = strtolower((string) $request->input('format', 'csv'));
+        if (! in_array($format, ['csv', 'xls', 'pdf'], true)) {
+            $format = 'csv';
+        }
+
         $contents = Content::with(['creator', 'platforms'])
             ->whereBetween('created_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
             ->oldest('created_at')->get();
 
-        $handle = fopen('php://temp', 'r+');
-        fputcsv($handle, ['Judul', 'Kategori', 'Status', 'Platform', 'Dibuat Oleh', 'Tanggal Dibuat', 'Jadwal', 'Dipublikasikan']);
+        $rows = [['Judul', 'Kategori', 'Status', 'Platform', 'Dibuat Oleh', 'Tanggal Dibuat', 'Jadwal', 'Dipublikasikan']];
         foreach ($contents as $content) {
-            fputcsv($handle, [
+            $rows[] = [
                 $content->title,
                 ($content->category ?? ContentCategory::Umum)->label(),
                 $content->status->label(),
@@ -156,18 +160,116 @@ class AnalyticsController extends ApiController
                 $content->created_at?->format('d-m-Y H:i') ?? '—',
                 $content->scheduled_at?->format('d-m-Y H:i') ?? '—',
                 $content->published_at?->format('d-m-Y H:i') ?? '—',
+            ];
+        }
+
+        $base = 'laporan-konten-'.$from->format('Ymd').'-'.$to->format('Ymd');
+        $period = 'Periode: '.$from->format('d-m-Y').' s/d '.$to->format('d-m-Y');
+
+        if ($format === 'xls') {
+            $html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'.$base.'</title>'
+                .'<style>table{border-collapse:collapse}th,td{border:1px solid #ccc;padding:4px;font-family:Arial,sans-serif;font-size:10pt;text-align:left}</style>'
+                .'</head><body><table>';
+            foreach ($rows as $index => $row) {
+                $tag = $index === 0 ? 'th' : 'td';
+                $html .= '<tr>';
+                foreach ($row as $cell) {
+                    $html .= '<'.$tag.'>'.e((string) $cell).'</'.$tag.'>';
+                }
+                $html .= '</tr>';
+            }
+            $html .= '</table></body></html>';
+
+            return response($html, 200, [
+                'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
+                'Content-Disposition' => 'attachment; filename="'.$base.'.xls"',
+                'Cache-Control' => 'no-store',
             ]);
+        }
+
+        if ($format === 'pdf') {
+            $lines = ['LAPORAN KONTEN', $period, ''];
+            foreach ($rows as $row) {
+                $lines[] = mb_substr(implode(' | ', array_map('strval', $row)), 0, 105);
+            }
+
+            return response($this->buildSimplePdf($lines), 200, [
+                'Content-Type' => 'application/pdf',
+                'Content-Disposition' => 'attachment; filename="'.$base.'.pdf"',
+                'Cache-Control' => 'no-store',
+            ]);
+        }
+
+        $handle = fopen('php://temp', 'r+');
+        foreach ($rows as $row) {
+            fputcsv($handle, $row);
         }
         rewind($handle);
         $csv = stream_get_contents($handle);
         fclose($handle);
 
-        $filename = 'laporan-konten-'.$from->format('Ymd').'-'.$to->format('Ymd').'.csv';
-
         return response($csv, 200, [
             'Content-Type' => 'text/csv; charset=UTF-8',
-            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
+            'Content-Disposition' => 'attachment; filename="'.$base.'.csv"',
         ]);
+    }
+
+    /// PDF sederhana tanpa library: font Helvetica bawaan, satu halaman per 48 baris.
+    /// @param array<int, string> $lines
+    private function buildSimplePdf(array $lines): string
+    {
+        $encode = static function (string $text): string {
+            $converted = iconv('UTF-8', 'Windows-1252//TRANSLIT//IGNORE', $text);
+
+            return addcslashes($converted === false ? '' : $converted, "\\()");
+        };
+
+        $chunks = array_chunk($lines, 48);
+        if ($chunks === []) {
+            $chunks = [['']];
+        }
+        $pageCount = count($chunks);
+        $fontNumber = 3 + 2 * $pageCount;
+        $kids = '';
+        for ($i = 0; $i < $pageCount; $i++) {
+            $kids .= (3 + $i).' 0 R ';
+        }
+
+        $objects = [
+            1 => '<< /Type /Catalog /Pages 2 0 R >>',
+            2 => '<< /Type /Pages /Kids ['.$kids.'] /Count '.$pageCount.' >>',
+        ];
+        foreach ($chunks as $index => $chunk) {
+            $pageNumber = 3 + $index;
+            $contentNumber = 3 + $pageCount + $index;
+            $objects[$pageNumber] = '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] '
+                .'/Resources << /Font << /F1 '.$fontNumber.' 0 R >> >> /Contents '.$contentNumber.' 0 R >>';
+
+            $stream = "BT\n/F1 10 Tf\n13 TL\n40 800 Td\n";
+            foreach ($chunk as $line) {
+                $stream .= '('.$encode((string) $line).") Tj\nT*\n";
+            }
+            $stream .= "ET\n";
+            $objects[$contentNumber] = '<< /Length '.strlen($stream)." >>\nstream\n".$stream.'endstream';
+        }
+        $objects[$fontNumber] = '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>';
+        ksort($objects);
+
+        $pdf = "%PDF-1.4\n";
+        $offsets = [];
+        foreach ($objects as $number => $body) {
+            $offsets[$number] = strlen($pdf);
+            $pdf .= $number." 0 obj\n".$body."\nendobj\n";
+        }
+        $xref = strlen($pdf);
+        $size = count($objects) + 1;
+        $pdf .= 'xref'."\n0 ".$size."\n0000000000 65535 f \n";
+        for ($number = 1; $number < $size; $number++) {
+            $pdf .= sprintf("%010d 00000 n \n", $offsets[$number] ?? 0);
+        }
+        $pdf .= 'trailer'."\n<< /Size ".$size." /Root 1 0 R >>\nstartxref\n".$xref."\n%%EOF\n";
+
+        return $pdf;
     }
 
     /** @return array{0: Carbon, 1: Carbon} */
