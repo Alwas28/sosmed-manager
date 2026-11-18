@@ -2,11 +2,14 @@
 
 use App\Http\Controllers\Api\AccessControlController;
 use App\Http\Controllers\Api\ActivityController;
+use App\Http\Controllers\Api\AnalyticsController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\ContentController;
 use App\Http\Controllers\Api\IntegrationController;
 use App\Http\Controllers\Api\MediaController;
+use App\Http\Controllers\Api\ProfileController;
 use App\Http\Controllers\Api\ReferenceController;
+use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\RolesController;
 use App\Http\Controllers\Api\UsersController;
@@ -146,5 +149,34 @@ Route::middleware('api.key')->group(function () {
         Route::put('/access-control/roles/{role}', [AccessControlController::class, 'update'])
             ->middleware('can:access.manage')
             ->name('api.access-control.roles.update');
+
+        // Profil (auth only, seperti web)
+        Route::get('/profile', [ProfileController::class, 'show'])->name('api.profile.show');
+        Route::put('/profile', [ProfileController::class, 'updateInformation'])->name('api.profile.update');
+        Route::put('/profile/password', [ProfileController::class, 'updatePassword'])->name('api.profile.password');
+        Route::post('/profile/resend-verification', [ProfileController::class, 'resendVerification'])->name('api.profile.verify');
+        Route::delete('/profile', [ProfileController::class, 'destroy'])->name('api.profile.destroy');
+
+        // Pengaturan (AI / image AI / template)
+        Route::get('/settings/ai', [SettingsController::class, 'aiGet'])->middleware('can:ai.manage')->name('api.settings.ai');
+        Route::put('/settings/ai', [SettingsController::class, 'aiSave'])->middleware('can:ai.manage')->name('api.settings.ai.save');
+        Route::post('/settings/ai/test', [SettingsController::class, 'aiTest'])->middleware('can:ai.manage')->name('api.settings.ai.test');
+        Route::get('/settings/image-ai', [SettingsController::class, 'imageIndex'])->middleware('can:image_ai.manage')->name('api.settings.image');
+        Route::post('/settings/image-ai', [SettingsController::class, 'imageStore'])->middleware('can:image_ai.manage')->name('api.settings.image.store');
+        Route::put('/settings/image-ai/{image}', [SettingsController::class, 'imageUpdate'])->middleware('can:image_ai.manage')->name('api.settings.image.update');
+        Route::post('/settings/image-ai/{image}/toggle', [SettingsController::class, 'imageToggle'])->middleware('can:image_ai.manage')->name('api.settings.image.toggle');
+        Route::delete('/settings/image-ai/{image}', [SettingsController::class, 'imageDestroy'])->middleware('can:image_ai.manage')->name('api.settings.image.destroy');
+        Route::get('/settings/template', [SettingsController::class, 'templateGet'])->middleware('can:template.manage')->name('api.settings.template');
+        Route::put('/settings/template', [SettingsController::class, 'templateSave'])->middleware('can:template.manage')->name('api.settings.template.save');
+        Route::delete('/settings/template/logo', [SettingsController::class, 'templateRemoveLogo'])->middleware('can:template.manage')->name('api.settings.template.logo');
+        Route::delete('/settings/template/font', [SettingsController::class, 'templateRemoveFont'])->middleware('can:template.manage')->name('api.settings.template.font');
+
+        // Analitik, laporan, kalender, kinerja, log
+        Route::get('/dashboard', [AnalyticsController::class, 'dashboard'])->name('api.dashboard');
+        Route::get('/reports/overview', [AnalyticsController::class, 'reportsOverview'])->middleware('can:report.view')->name('api.reports.overview');
+        Route::get('/reports/export', [AnalyticsController::class, 'reportsExport'])->middleware('can:report.export')->name('api.reports.export');
+        Route::get('/performance', [AnalyticsController::class, 'performance'])->middleware('can:log.view')->name('api.performance');
+        Route::get('/calendar', [AnalyticsController::class, 'calendar'])->middleware('can:calendar.view')->name('api.calendar');
+        Route::get('/logs', [AnalyticsController::class, 'logs'])->middleware('can:log.view')->name('api.logs');
     });
 });
