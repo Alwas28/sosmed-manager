@@ -42,6 +42,8 @@ abstract class ApiController extends Controller
             'id' => $user->id,
             'name' => $user->name,
             'email' => $user->email,
+            'avatar' => $user->avatar,
+            'active' => (bool) $user->is_active,
             'role' => [
                 'id' => $user->role?->id,
                 'name' => $user->role?->name,

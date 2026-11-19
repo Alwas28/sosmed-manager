@@ -123,6 +123,9 @@ Route::middleware('api.key')->group(function () {
         Route::get('/users', [UsersController::class, 'index'])
             ->middleware('can:user.view')
             ->name('api.users.index');
+        Route::put('/users/{user}/active', [UsersController::class, 'updateActive'])
+            ->middleware('can:user.manage')
+            ->name('api.users.active.update');
         Route::put('/users/{user}/role', [UsersController::class, 'updateRole'])
             ->middleware('can:user.manage')
             ->name('api.users.role.update');
@@ -153,6 +156,7 @@ Route::middleware('api.key')->group(function () {
         // Profil (auth only, seperti web)
         Route::get('/profile', [ProfileController::class, 'show'])->name('api.profile.show');
         Route::put('/profile', [ProfileController::class, 'updateInformation'])->name('api.profile.update');
+        Route::put('/profile/avatar', [ProfileController::class, 'updateAvatar'])->name('api.profile.avatar');
         Route::put('/profile/password', [ProfileController::class, 'updatePassword'])->name('api.profile.password');
         Route::post('/profile/resend-verification', [ProfileController::class, 'resendVerification'])->name('api.profile.verify');
         Route::delete('/profile', [ProfileController::class, 'destroy'])->name('api.profile.destroy');

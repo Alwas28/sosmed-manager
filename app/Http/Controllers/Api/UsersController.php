@@ -24,6 +24,7 @@ class UsersController extends ApiController
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'active' => (bool) $user->is_active,
                 'role_id' => $user->role_id,
                 'role' => $user->role ? [
                     'id' => $user->role->id,
@@ -42,6 +43,33 @@ class UsersController extends ApiController
                 'label' => $platform->label(),
             ])->all(),
         ]);
+    }
+
+    public function updateActive(Request $request, User $user): JsonResponse
+    {
+        Gate::authorize('user.manage');
+
+        abort_if($user->isAdministrator(), 422, 'Status Administrator tidak dapat diubah.');
+
+        $validated = $request->validate([
+            'active' => ['required', 'boolean'],
+        ]);
+
+        $user->is_active = (bool) $validated['active'];
+        $user->save();
+
+        ActivityLog::record(
+            'user_active_changed',
+            "{$user->name}: ".($user->is_active ? 'diaktifkan' : 'dinonaktifkan'),
+            $user,
+        );
+
+        return $this->success([
+            'user' => [
+                'id' => $user->id,
+                'active' => (bool) $user->is_active,
+            ],
+        ], ($user->is_active ? 'Pengguna '.$user->name.' diaktifkan.' : 'Pengguna '.$user->name.' dinonaktifkan.'));
     }
 
     public function updateRole(Request $request, User $user): JsonResponse

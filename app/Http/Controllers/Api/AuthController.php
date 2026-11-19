@@ -20,10 +20,18 @@ class AuthController extends ApiController
             return $this->error('Email atau kata sandi salah.', 401);
         }
 
-        $request->session()->regenerate();
-
         /** @var \App\Models\User $user */
         $user = Auth::user();
+        if (! $user->is_active) {
+            Auth::guard('web')->logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            return $this->error('Akun ini telah dinonaktifkan. Hubungi administrator.', 403);
+        }
+
+        $request->session()->regenerate();
+
         ActivityLog::record('login', 'Masuk melalui API', null, $user->id);
 
         return $this->success($this->userPayload($user), 'Berhasil masuk.');
