@@ -6,13 +6,16 @@ use App\Enums\AiProvider;
 use App\Enums\ImageAiProvider;
 use App\Enums\LogoPosition;
 use App\Enums\Platform;
+use App\Enums\WorkflowStep;
 use App\Models\AiSetting;
 use App\Models\ImageAiProfile;
 use App\Models\PostTemplateSetting;
+use App\Models\WorkflowStage;
 use App\Services\AI\AiException;
 use App\Services\AI\AiService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
@@ -330,6 +333,101 @@ class SettingsController extends ApiController
         $settings->update(['font_path' => null]);
 
         return $this->success($this->templatePayload($settings->refresh()), 'Font dihapus.');
+    }
+
+    // -------------------------------------------------------------------------
+    // Preferensi akun, template caption, dan alur kerja
+    // -------------------------------------------------------------------------
+
+    public function preferencesGet(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        return $this->success([
+            'notify_push' => (bool) $user->notify_push,
+            'notify_device' => (bool) $user->notify_device,
+            'notify_email' => (bool) $user->notify_email,
+            'auto_sync_buffer' => (bool) $user->auto_sync_buffer,
+        ]);
+    }
+
+    public function preferencesSave(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'notify_push' => ['sometimes', 'boolean'],
+            'notify_device' => ['sometimes', 'boolean'],
+            'notify_email' => ['sometimes', 'boolean'],
+            'auto_sync_buffer' => ['sometimes', 'boolean'],
+        ]);
+
+        $user = $request->user();
+        $user->update($data);
+
+        return $this->success([
+            'notify_push' => (bool) $user->notify_push,
+            'notify_device' => (bool) $user->notify_device,
+            'notify_email' => (bool) $user->notify_email,
+            'auto_sync_buffer' => (bool) $user->auto_sync_buffer,
+        ], 'Preferensi notifikasi tersimpan.');
+    }
+
+    public function generalGet(): JsonResponse
+    {
+        Gate::authorize('template.manage');
+
+        return $this->success([
+            'settings' => [
+                'closing_line' => (string) (DB::table('app_settings')
+                    ->where('key', 'closing_line')
+                    ->value('value') ?? ''),
+            ],
+        ]);
+    }
+
+    public function generalSave(Request $request): JsonResponse
+    {
+        Gate::authorize('template.manage');
+        $data = $request->validate([
+            'closing_line' => ['required', 'string', 'max:500'],
+        ]);
+
+        DB::table('app_settings')->updateOrInsert(
+            ['key' => 'closing_line'],
+            ['value' => $data['closing_line'], 'updated_at' => now()],
+        );
+
+        return $this->success(
+            ['closing_line' => $data['closing_line']],
+            'Template caption tersimpan.',
+        );
+    }
+
+    public function workflowGet(): JsonResponse
+    {
+        Gate::authorize('template.manage');
+
+        return $this->success(['stages' => $this->workflowStages()]);
+    }
+
+    /**
+     * Alur kerja sekarang tetap (4 tahap), sehingga tidak ada lagi penulisan
+     * konfigurasi dari klien. Endpoint dipertahankan agar klien lama tetap
+     * mendapat daftar tahap yang benar, bukan 404.
+     */
+    public function workflowSave(Request $request): JsonResponse
+    {
+        Gate::authorize('template.manage');
+
+        return $this->success(
+            ['stages' => $this->workflowStages()],
+            'Alur kerja tetap: Wartawan → Editor → Publisher → Pimpinan Redaksi.',
+        );
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function workflowStages(): array
+    {
+        return WorkflowStep::stages();
     }
 
     /** @return array<string, mixed> */

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Enums\ContentCategory;
 use App\Enums\ContentStatus;
 use App\Enums\Platform;
+use App\Enums\WorkflowStep;
 use App\Models\Content;
 use App\Models\ContentPlatform;
 use App\Services\Content\ContentApprovalService;
@@ -19,6 +20,10 @@ class ContentController extends ApiController
 {
     public function index(Request $request): JsonResponse
     {
+        // Pengaman bila scheduler/cron belum dipasang: konten yang sudah lewat
+        // batas 10 menit Pimpinan Redaksi tetap terbit saat daftar dibaca.
+        app(ContentApprovalService::class)->publishDue();
+
         $query = Content::with([
             'creator:id,name,role_id',
             'creator.role:id,name,slug',
@@ -127,6 +132,7 @@ class ContentController extends ApiController
                 'caption' => $data['caption'] ?? null,
                 'category' => $category->value,
                 'status' => ContentStatus::Draft->value,
+                'workflow_stage' => WorkflowStep::Writer->value,
                 'created_by' => $request->user()->id,
                 'link_url' => $data['link_url'] ?? null,
                 'link_title' => $data['link_title'] ?? null,
@@ -153,8 +159,11 @@ class ContentController extends ApiController
         $user = $request->user();
         $isOwner = $content->created_by === $user->id;
         $canEditRole = $user->isAdministrator() || $user->hasPermission('content.edit');
+        // Editor hanya menyunting konten yang sedang berada di meja Editor.
+        // Setelah diteruskan ke Publisher, konten tidak lagi bisa disunting.
         $editorFinishing = $canEditRole
-            && in_array($content->status, [ContentStatus::PendingApproval, ContentStatus::Revision], true);
+            && $content->status === ContentStatus::PendingApproval
+            && $content->workflow_stage === WorkflowStep::Editor->value;
 
         if (! $canEditRole && ! ($isOwner && $content->status->isEditable())) {
             return $this->error('Anda tidak memiliki akses menyunting konten ini.', 403);
@@ -204,11 +213,16 @@ class ContentController extends ApiController
             $content->fill($data);
 
             if ($submit && $content->status->canSubmit()) {
+                // Wartawan mengajukan draft/konten revisi → meja Editor.
                 $content->status = ContentStatus::PendingApproval;
+                $content->workflow_stage = WorkflowStep::Editor->value;
+                $content->stage_due_at = null;
                 $content->scheduled_at = null;
             } elseif ($submit && $editorFinishing) {
-                $content->status = ContentStatus::Approved;
+                // Editor selesai menyunting → meja Publisher (status tetap menunggu).
+                $content->workflow_stage = WorkflowStep::Publisher->value;
                 $content->approved_by = $request->user()->id;
+                $content->stage_due_at = null;
                 $content->scheduled_at = null;
             }
 
@@ -227,7 +241,7 @@ class ContentController extends ApiController
                     $editorFinishing ? 'approved' : 'submitted',
                     $from,
                     $content->status->value,
-                    $editorFinishing ? 'Editor menyunting dan menyetujui.' : null
+                    $editorFinishing ? 'Editor menyunting dan meneruskan ke Publisher.' : null
                 );
             } else {
                 $content->logActivity('updated', $from, $content->status->value);
@@ -269,6 +283,7 @@ class ContentController extends ApiController
         $content->status = ContentStatus::PendingApproval;
         $content->scheduled_at = null;
         $content->save();
+        app(ContentApprovalService::class)->markSubmitted($content);
         $content->logActivity('submitted', $from, ContentStatus::PendingApproval->value);
 
         return $this->success($this->payload($content->load([
@@ -283,14 +298,18 @@ class ContentController extends ApiController
     public function approve(Request $request, Content $content): JsonResponse
     {
         if ($content->status !== ContentStatus::PendingApproval) {
-            return $this->error('Konten tidak sedang menunggu persetujuan Editor.', 422);
+            return $this->error('Konten tidak sedang menunggu persetujuan.', 422);
         }
 
-        app(ContentApprovalService::class)->approve(
-            $content,
-            $request->user(),
-            $request->input('note')
-        );
+        try {
+            $message = app(ContentApprovalService::class)->approve(
+                $content,
+                $request->user(),
+                $request->input('note')
+            );
+        } catch (\Throwable $e) {
+            return $this->error($e->getMessage(), 422);
+        }
 
         return $this->success($this->payload($content->refresh()->load([
             'creator:id,name,role_id',
@@ -298,7 +317,7 @@ class ContentController extends ApiController
             'approver:id,name',
             'media',
             'platforms',
-        ])), 'Konten disetujui Editor.');
+        ])), $message);
     }
 
     public function requestRevision(Request $request, Content $content): JsonResponse
@@ -440,6 +459,9 @@ class ContentController extends ApiController
                 'value' => $content->status->value,
                 'label' => $content->status->label(),
             ],
+            'workflow_stage' => $content->workflow_stage,
+            'workflow_stage_label' => WorkflowStep::tryFrom((string) $content->workflow_stage)?->label(),
+            'stage_due_at' => $content->stage_due_at?->toISOString(),
             'revision_note' => $content->pendingRevisionNote(),
             'scheduled_at' => $content->scheduled_at?->toISOString(),
             'published_at' => $content->published_at?->toISOString(),

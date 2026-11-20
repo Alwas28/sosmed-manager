@@ -6,6 +6,7 @@ use App\Enums\ApprovalDecision;
 use App\Enums\ContentCategory;
 use App\Enums\ContentStatus;
 use App\Enums\Platform;
+use App\Enums\PostType;
 use App\Models\ActivityLog;
 use App\Models\Content;
 use App\Models\ContentPlatform;
@@ -145,36 +146,138 @@ class AnalyticsController extends ApiController
             $format = 'csv';
         }
 
-        $contents = Content::with(['creator', 'platforms'])
+        $contents = Content::with(['creator.role', 'platforms', 'approver', 'media'])
             ->whereBetween('created_at', [$from->copy()->startOfDay(), $to->copy()->endOfDay()])
             ->oldest('created_at')->get();
 
-        $rows = [['Judul', 'Kategori', 'Status', 'Platform', 'Dibuat Oleh', 'Tanggal Dibuat', 'Jadwal', 'Dipublikasikan']];
+        $typeLabels = static function (Content $content): string {
+            return $content->platforms
+                ->map(function ($p) {
+                    $type = PostType::tryFrom((string) $p->post_type);
+                    $platform = Platform::tryFrom((string) $p->platform);
+
+                    return $type && $platform
+                        ? $type->label($platform)
+                        : (string) $p->post_type;
+                })
+                ->filter()
+                ->unique()
+                ->implode(', ');
+        };
+
+        // Ringkasan per akun: satu baris untuk setiap akun yang memiliki konten
+        // pada rentang tanggal yang dipilih.
+        $summaryGroups = $contents->groupBy(
+            fn (Content $c) => $c->created_by ?: 'cold-'.$c->id,
+        );
+        $summaryRows = [];
+        foreach ($summaryGroups as $group) {
+            $first = $group->first();
+            $statuses = $group->countBy(fn (Content $c) => $c->status->value);
+            $platforms = $group
+                ->flatMap(fn (Content $c) => $c->platforms->pluck('platform'))
+                ->filter()
+                ->unique()
+                ->map(fn ($p) => Platform::tryLabel($p) ?? $p)
+                ->implode(', ');
+            $categories = $group
+                ->map(fn (Content $c) => ($c->category ?? ContentCategory::Umum)->label())
+                ->unique()
+                ->implode(', ');
+            $types = $group
+                ->flatMap(fn (Content $c) => $c->platforms)
+                ->map(function ($p) {
+                    $type = PostType::tryFrom((string) $p->post_type);
+                    $platform = Platform::tryFrom((string) $p->platform);
+
+                    return $type && $platform ? $type->label($platform) : (string) $p->post_type;
+                })
+                ->filter()
+                ->unique()
+                ->implode(', ');
+            $firstAt = $group->min(fn (Content $c) => $c->created_at?->timestamp ?? 0);
+            $lastAt = $group->max(fn (Content $c) => $c->created_at?->timestamp ?? 0);
+            $summaryRows[] = [
+                $first->creator?->name ?? '—',
+                $first->creator?->email ?? '—',
+                $first->creator?->role?->name ?? '—',
+                $group->count(),
+                $statuses->get('draft', 0),
+                $statuses->get('pending_approval', 0),
+                $statuses->get('revision', 0),
+                $statuses->get('approved', 0),
+                $statuses->get('scheduled', 0),
+                $statuses->get('published', 0),
+                $statuses->get('failed', 0),
+                $group->filter(fn (Content $c) => $c->isLinkPost())->count(),
+                $types,
+                $platforms,
+                $categories,
+                $firstAt ? Carbon::createFromTimestamp($firstAt)->format('d-m-Y H:i') : '—',
+                $lastAt ? Carbon::createFromTimestamp($lastAt)->format('d-m-Y H:i') : '—',
+            ];
+        }
+
+        // Detail seluruh konten pada rentang yang sama.
+        $detailRows = [];
         foreach ($contents as $content) {
-            $rows[] = [
+            $detailRows[] = [
                 $content->title,
                 ($content->category ?? ContentCategory::Umum)->label(),
                 $content->status->label(),
+                $typeLabels($content),
                 $content->platforms->pluck('platform')->map(fn ($p) => Platform::tryLabel($p))->implode(', '),
                 $content->creator?->name ?? '—',
+                $content->creator?->role?->name ?? '—',
+                $content->link_url ?? '—',
+                $content->link_title ?? '—',
+                $content->link_description ?? '—',
+                $content->media->pluck('original_name')->filter()->implode(', '),
                 $content->created_at?->format('d-m-Y H:i') ?? '—',
                 $content->scheduled_at?->format('d-m-Y H:i') ?? '—',
                 $content->published_at?->format('d-m-Y H:i') ?? '—',
+                $content->approver?->name ?? '—',
             ];
         }
+
+        $summaryHeader = [
+            'Akun', 'Email', 'Role', 'Total Konten', 'Draft', 'Menunggu Approval',
+            'Revisi', 'Disetujui', 'Dijadwalkan', 'Dipublikasikan', 'Gagal',
+            'Post Link', 'Jenis Post', 'Platform', 'Kategori',
+            'Konten Pertama', 'Konten Terakhir',
+        ];
+        $detailHeader = [
+            'Judul', 'Kategori', 'Status', 'Jenis Post', 'Platform', 'Dibuat Oleh',
+            'Role', 'URL Link', 'Judul Link', 'Deskripsi Link', 'Media',
+            'Tanggal Dibuat', 'Jadwal', 'Dipublikasikan', 'Reviewer',
+        ];
+
+        $rows = [
+            ['RINGKASAN PER AKUN'],
+            $summaryHeader,
+            ...$summaryRows,
+            [],
+            ['DETAIL KONTEN'],
+            $detailHeader,
+            ...$detailRows,
+        ];
+        // Baris 0/1 = judul + header ringkasan; 4/5 = judul + header detail.
+        $headerIndexes = [0, 1, 4, 5];
 
         $base = 'laporan-konten-'.$from->format('Ymd').'-'.$to->format('Ymd');
         $period = 'Periode: '.$from->format('d-m-Y').' s/d '.$to->format('d-m-Y');
 
         if ($format === 'xls') {
             $html = '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'.$base.'</title>'
-                .'<style>table{border-collapse:collapse}th,td{border:1px solid #ccc;padding:4px;font-family:Arial,sans-serif;font-size:10pt;text-align:left}</style>'
+                .'<style>table{border-collapse:collapse}th,td{border:1px solid #ccc;padding:4px;font-family:Arial,sans-serif;font-size:10pt;text-align:left}'
+                .'.section{background:#eef2ff;font-weight:bold}tr:nth-child(2),tr:nth-child(6){background:#f8fafc}</style>'
                 .'</head><body><table>';
             foreach ($rows as $index => $row) {
-                $tag = $index === 0 ? 'th' : 'td';
+                $tag = in_array($index, $headerIndexes, true) ? 'th' : 'td';
+                $class = in_array($index, $headerIndexes, true) ? ' class="section"' : '';
                 $html .= '<tr>';
                 foreach ($row as $cell) {
-                    $html .= '<'.$tag.'>'.e((string) $cell).'</'.$tag.'>';
+                    $html .= '<'.$tag.$class.'>'.e((string) $cell).'</'.$tag.'>';
                 }
                 $html .= '</tr>';
             }
@@ -189,8 +292,19 @@ class AnalyticsController extends ApiController
 
         if ($format === 'pdf') {
             $lines = ['LAPORAN KONTEN', $period, ''];
-            foreach ($rows as $row) {
-                $lines[] = mb_substr(implode(' | ', array_map('strval', $row)), 0, 105);
+            $lines[] = 'RINGKASAN PER AKUN';
+            foreach ($summaryRows as $row) {
+                foreach ($summaryHeader as $index => $label) {
+                    $lines[] = $label.': '.mb_substr((string) ($row[$index] ?? ''), 0, 140);
+                }
+                $lines[] = '';
+            }
+            $lines[] = 'DETAIL KONTEN';
+            foreach ($detailRows as $row) {
+                foreach ($detailHeader as $index => $label) {
+                    $lines[] = $label.': '.mb_substr((string) ($row[$index] ?? ''), 0, 140);
+                }
+                $lines[] = '';
             }
 
             return response($this->buildSimplePdf($lines), 200, [

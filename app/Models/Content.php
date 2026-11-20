@@ -16,7 +16,8 @@ class Content extends Model
     use SoftDeletes;
 
     protected $fillable = [
-        'title', 'caption', 'category', 'status', 'scheduled_at', 'published_at',
+        'title', 'caption', 'category', 'status', 'workflow_stage', 'stage_due_at',
+        'scheduled_at', 'published_at',
         'created_by', 'approved_by', 'buffer_post_ids',
         'link_url', 'link_title', 'link_description',
     ];
@@ -31,6 +32,7 @@ class Content extends Model
         return [
             'status' => ContentStatus::class,
             'category' => ContentCategory::class,
+            'stage_due_at' => 'datetime',
             'scheduled_at' => 'datetime',
             'published_at' => 'datetime',
             'buffer_post_ids' => 'array',

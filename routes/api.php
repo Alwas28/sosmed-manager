@@ -174,6 +174,12 @@ Route::middleware('api.key')->group(function () {
         Route::put('/settings/template', [SettingsController::class, 'templateSave'])->middleware('can:template.manage')->name('api.settings.template.save');
         Route::delete('/settings/template/logo', [SettingsController::class, 'templateRemoveLogo'])->middleware('can:template.manage')->name('api.settings.template.logo');
         Route::delete('/settings/template/font', [SettingsController::class, 'templateRemoveFont'])->middleware('can:template.manage')->name('api.settings.template.font');
+        Route::get('/profile/preferences', [SettingsController::class, 'preferencesGet'])->name('api.profile.preferences');
+        Route::put('/profile/preferences', [SettingsController::class, 'preferencesSave'])->name('api.profile.preferences.save');
+        Route::get('/settings/general', [SettingsController::class, 'generalGet'])->middleware('can:template.manage')->name('api.settings.general');
+        Route::put('/settings/general', [SettingsController::class, 'generalSave'])->middleware('can:template.manage')->name('api.settings.general.save');
+        Route::get('/settings/workflow', [SettingsController::class, 'workflowGet'])->middleware('can:template.manage')->name('api.settings.workflow');
+        Route::put('/settings/workflow', [SettingsController::class, 'workflowSave'])->middleware('can:template.manage')->name('api.settings.workflow.save');
 
         // Analitik, laporan, kalender, kinerja, log
         Route::get('/dashboard', [AnalyticsController::class, 'dashboard'])->name('api.dashboard');
